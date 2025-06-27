@@ -35,7 +35,7 @@ pub struct ExtensionManager {
     clients: HashMap<String, McpClientBox>,
     instructions: HashMap<String, String>,
     resource_capable_extensions: HashSet<String>,
-    temp_dirs: HashMap<String, tempfile::TempDir>,  // Keep temp dirs alive for the lifetime of the extension
+    temp_dirs: HashMap<String, tempfile::TempDir>,
 }
 
 /// A flattened representation of a resource used by the agent to prepare inference
@@ -253,38 +253,27 @@ impl ExtensionManager {
                 dependencies,
                 ..
             } => {
-                // Create a temporary file for the Python code
                 let temp_dir = tempdir()?;
                 let file_path = temp_dir.path().join(format!("{}.py", name));
                 std::fs::write(&file_path, code)?;
-                
-                // Build uvx command with dependencies
+
                 let mut args = vec![];
-                
-                // Add standard dependencies that should always be available
+
                 let mut all_deps = vec!["mcp".to_string()];
-                
-                // Add custom dependencies if any
+
                 if let Some(deps) = dependencies.as_ref() {
                     all_deps.extend(deps.iter().cloned());
                 }
-                
-                // Add dependencies with --with flag
+
                 for dep in all_deps {
                     args.push("--with".to_string());
                     args.push(dep);
                 }
-                
-                // Add python file as command to run
+
                 args.push("python".to_string());
                 args.push(file_path.to_str().unwrap().to_string());
-                
-                // Execute using uvx
-                let transport = StdioTransport::new(
-                    "uvx",
-                    args,
-                    HashMap::new(),
-                );
+
+                let transport = StdioTransport::new("uvx", args, HashMap::new());
                 let handle = transport.start().await?;
                 let client = Box::new(
                     McpClient::connect(
@@ -296,7 +285,6 @@ impl ExtensionManager {
                     .await?,
                 );
 
-                // Store the temp_dir to keep it alive
                 self.temp_dirs.insert(sanitized_name.clone(), temp_dir);
 
                 client
