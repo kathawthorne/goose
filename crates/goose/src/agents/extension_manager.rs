@@ -35,6 +35,7 @@ pub struct ExtensionManager {
     clients: HashMap<String, McpClientBox>,
     instructions: HashMap<String, String>,
     resource_capable_extensions: HashSet<String>,
+    temp_dirs: HashMap<String, tempfile::TempDir>,  // Keep temp dirs alive for the lifetime of the extension
 }
 
 /// A flattened representation of a resource used by the agent to prepare inference
@@ -105,6 +106,7 @@ impl ExtensionManager {
             clients: HashMap::new(),
             instructions: HashMap::new(),
             resource_capable_extensions: HashSet::new(),
+            temp_dirs: HashMap::new(),
         }
     }
 
@@ -284,7 +286,7 @@ impl ExtensionManager {
                     HashMap::new(),
                 );
                 let handle = transport.start().await?;
-                Box::new(
+                let client = Box::new(
                     McpClient::connect(
                         handle,
                         Duration::from_secs(
@@ -292,7 +294,12 @@ impl ExtensionManager {
                         ),
                     )
                     .await?,
-                )
+                );
+
+                // Store the temp_dir to keep it alive
+                self.temp_dirs.insert(sanitized_name.clone(), temp_dir);
+
+                client
             }
             _ => unreachable!(),
         };
@@ -344,6 +351,7 @@ impl ExtensionManager {
         self.clients.remove(&sanitized_name);
         self.instructions.remove(&sanitized_name);
         self.resource_capable_extensions.remove(&sanitized_name);
+        self.temp_dirs.remove(&sanitized_name);
         Ok(())
     }
 
