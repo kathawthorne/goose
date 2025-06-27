@@ -19,6 +19,7 @@ extensions:
     name: word_counter
     code: |
       from mcp import *
+      from mcp.server import tool
       import json
       from collections import Counter
       import numpy as np
