@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::time::Duration;
+use tempfile::tempdir;
 use tokio::sync::Mutex;
 use tokio::task;
 use tokio_stream::wrappers::ReceiverStream;
@@ -232,6 +233,48 @@ impl ExtensionManager {
                     vec!["mcp".to_string(), name.clone()],
                     HashMap::new(),
                 );
+                let handle = transport.start().await?;
+                Box::new(
+                    McpClient::connect(
+                        handle,
+                        Duration::from_secs(
+                            timeout.unwrap_or(crate::config::DEFAULT_EXTENSION_TIMEOUT),
+                        ),
+                    )
+                    .await?,
+                )
+            }
+            ExtensionConfig::InlinePython {
+                name,
+                code,
+                timeout,
+                dependencies,
+                ..
+            } => {
+                let temp_dir = tempdir()?;
+                let file_path = temp_dir.path().join(format!("{}.py", name));
+                std::fs::write(&file_path, code)?;
+
+                let mut args = vec![];
+
+                let standard_deps = vec!["mcp".to_string()];
+
+                let all_deps: Vec<String> = standard_deps
+                    .into_iter()
+                    .chain(dependencies.unwrap_or_default())
+                    .collect();
+
+                // Add each dependency with -r flag
+                for dep in all_deps {
+                    args.push("-r".to_string());
+                    args.push(dep);
+                }
+
+                // Add the script path as the final argument
+                args.push(file_path.to_str().unwrap().to_string());
+
+                // Execute using uvx
+                let transport = StdioTransport::new("uvx", args, HashMap::new());
                 let handle = transport.start().await?;
                 Box::new(
                     McpClient::connect(
@@ -754,8 +797,11 @@ impl ExtensionManager {
                     }
                     | ExtensionConfig::Stdio {
                         description, name, ..
+                    }
+                    | ExtensionConfig::InlinePython {
+                        description, name, ..
                     } => {
-                        // For SSE/Stdio, use description if available
+                        // For SSE/Stdio/InlinePython, use description if available
                         description
                             .as_ref()
                             .map(|s| s.to_string())

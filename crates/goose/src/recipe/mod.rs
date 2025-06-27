@@ -363,6 +363,7 @@ impl RecipeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_from_content_with_json() {
@@ -538,6 +539,38 @@ sub_recipes:
         assert!(recipe.author.is_some());
         let author = recipe.author.unwrap();
         assert_eq!(author.contact, Some("test@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_inline_python_extension() {
+        // Test parsing a recipe with an inline Python extension
+        let recipe_path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/recipe/test_recipes/word_counter.yaml");
+        let recipe_content = fs::read_to_string(recipe_path).expect("Failed to read recipe file");
+        
+        let recipe = Recipe::from_content(&recipe_content).expect("Failed to parse recipe");
+        
+        // Verify we have one extension
+        assert!(recipe.extensions.is_some());
+        let extensions = recipe.extensions.unwrap();
+        assert_eq!(extensions.len(), 1);
+        
+        // Verify it's an inline Python extension
+        match &extensions[0] {
+            ExtensionConfig::InlinePython { name, code, description, timeout, dependencies } => {
+                assert_eq!(name, "word_counter");
+                assert!(code.contains("from mcp import *"));
+                assert!(code.contains("@tool(\"count_words\")"));
+                assert_eq!(description.as_deref(), Some("Count words and provide text statistics with visualization"));
+                assert_eq!(timeout, &Some(300));
+                
+                // Verify dependencies
+                let deps = dependencies.as_ref().expect("Should have dependencies");
+                assert!(deps.contains(&"numpy".to_string()));
+                assert!(deps.contains(&"matplotlib".to_string()));
+                assert!(deps.contains(&"wordcloud".to_string()));
+            }
+            _ => panic!("Expected InlinePython extension"),
+        }
     }
 
     #[test]
