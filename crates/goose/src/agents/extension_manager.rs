@@ -267,13 +267,14 @@ impl ExtensionManager {
                     all_deps.extend(deps.iter().cloned());
                 }
                 
-                // Add each dependency with --with flag
+                // Add dependencies with --with flag
                 for dep in all_deps {
                     args.push("--with".to_string());
                     args.push(dep);
                 }
                 
-                // Add the script path as the final argument
+                // Add python file as command to run
+                args.push("python".to_string());
                 args.push(file_path.to_str().unwrap().to_string());
                 
                 // Execute using uvx
