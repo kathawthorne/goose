@@ -251,30 +251,37 @@ impl ExtensionManager {
                 dependencies,
                 ..
             } => {
+                // Create a temporary file for the Python code
                 let temp_dir = tempdir()?;
                 let file_path = temp_dir.path().join(format!("{}.py", name));
                 std::fs::write(&file_path, code)?;
-
+                
+                // Build uvx command with dependencies
                 let mut args = vec![];
-
-                let standard_deps = vec!["mcp".to_string()];
-
-                let all_deps: Vec<String> = standard_deps
-                    .into_iter()
-                    .chain(dependencies.unwrap_or_default())
-                    .collect();
-
-                // Add each dependency with -r flag
+                
+                // Add standard dependencies that should always be available
+                let mut all_deps = vec!["mcp".to_string()];
+                
+                // Add custom dependencies if any
+                if let Some(deps) = dependencies.as_ref() {
+                    all_deps.extend(deps.iter().cloned());
+                }
+                
+                // Add each dependency with --with flag
                 for dep in all_deps {
-                    args.push("-r".to_string());
+                    args.push("--with".to_string());
                     args.push(dep);
                 }
-
+                
                 // Add the script path as the final argument
                 args.push(file_path.to_str().unwrap().to_string());
-
+                
                 // Execute using uvx
-                let transport = StdioTransport::new("uvx", args, HashMap::new());
+                let transport = StdioTransport::new(
+                    "uvx",
+                    args,
+                    HashMap::new(),
+                );
                 let handle = transport.start().await?;
                 Box::new(
                     McpClient::connect(
