@@ -18,8 +18,7 @@ extensions:
   - type: inline_python
     name: word_counter
     code: |
-      from mcp import *
-      from mcp.server import tool
+      from mcp.server.fastmcp import FastMCP
       import json
       from collections import Counter
       import numpy as np
@@ -28,7 +27,9 @@ extensions:
       import base64
       from io import BytesIO
       
-      @tool("count_words")
+      mcp = FastMCP("word_counter")
+      
+      @mcp.tool()
       def count_words(text: str) -> str:
           """Count the number of words in a text string and generate statistics"""
           words = text.split()
@@ -60,15 +61,19 @@ extensions:
           }
           
           return json.dumps(result, indent=2)
-      
+          
       if __name__ == "__main__":
-          run_server()
+          mcp.run()
     timeout: 300
     description: "Count words and provide text statistics with visualization"
     dependencies:
+      - "mcp"
       - "numpy"
       - "matplotlib"
       - "wordcloud"
+      - "beautifulsoup4"
+      - "html2text"
+      - "requests"
 
 prompt: |
   You are a helpful assistant that can analyze text using word counting tools.
