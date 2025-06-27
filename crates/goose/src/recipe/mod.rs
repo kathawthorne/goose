@@ -543,13 +543,24 @@ sub_recipes:
 
     #[test]
     fn test_inline_python_extension() {
-        let recipe_path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/recipe/test_recipes/word_counter.yaml"
-        );
-        let recipe_content = fs::read_to_string(recipe_path).expect("Failed to read recipe file");
+        let content = r#"{
+            "version": "1.0.0",
+            "title": "Test Recipe",
+            "description": "A test recipe",
+            "instructions": "Test instructions",
+            "extensions": [
+                {
+                    "type": "inline_python",
+                    "name": "test_python",
+                    "code": "print('hello world')",
+                    "timeout": 300,
+                    "description": "Test python extension",
+                    "dependencies": ["numpy", "matplotlib"]
+                }
+            ]
+        }"#;
 
-        let recipe = Recipe::from_content(&recipe_content).expect("Failed to parse recipe");
+        let recipe = Recipe::from_content(content).unwrap();
 
         assert!(recipe.extensions.is_some());
         let extensions = recipe.extensions.unwrap();
@@ -563,20 +574,14 @@ sub_recipes:
                 timeout,
                 dependencies,
             } => {
-                assert_eq!(name, "word_counter");
-                assert!(code.contains("from mcp import *"));
-                assert!(code.contains("@tool(\"count_words\")"));
-                assert_eq!(
-                    description.as_deref(),
-                    Some("Count words and provide text statistics with visualization")
-                );
+                assert_eq!(name, "test_python");
+                assert_eq!(code, "print('hello world')");
+                assert_eq!(description.as_deref(), Some("Test python extension"));
                 assert_eq!(timeout, &Some(300));
-
-                // Verify dependencies
-                let deps = dependencies.as_ref().expect("Should have dependencies");
+                assert!(dependencies.is_some());
+                let deps = dependencies.as_ref().unwrap();
                 assert!(deps.contains(&"numpy".to_string()));
                 assert!(deps.contains(&"matplotlib".to_string()));
-                assert!(deps.contains(&"wordcloud".to_string()));
             }
             _ => panic!("Expected InlinePython extension"),
         }
