@@ -2,7 +2,7 @@ use crate::transport::Error;
 use async_trait::async_trait;
 use eventsource_client::{Client, SSE};
 use futures::TryStreamExt;
-use mcp_core::protocol::JsonRpcMessage;
+use rmcp::model::JsonRpcMessage;
 use reqwest::Client as HttpClient;
 use std::collections::HashMap;
 use std::sync::Arc;

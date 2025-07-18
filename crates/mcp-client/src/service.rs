@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use mcp_core::protocol::{JsonRpcMessage, JsonRpcRequest};
+use rmcp::model::{JsonRpcMessage, JsonRpcRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::task::{Context, Poll};

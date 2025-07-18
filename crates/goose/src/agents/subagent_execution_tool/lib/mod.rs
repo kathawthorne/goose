@@ -6,7 +6,7 @@ use crate::agents::subagent_execution_tool::{
     tasks_manager::TasksManager,
 };
 use crate::agents::subagent_task_config::TaskConfig;
-use mcp_core::protocol::JsonRpcMessage;
+use rmcp::model::JsonRpcMessage;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 

@@ -7,7 +7,7 @@ use base64::Engine;
 use chrono::NaiveDate;
 use indoc::indoc;
 use lazy_static::lazy_static;
-use mcp_core::protocol::JsonRpcMessage;
+use rmcp::model::JsonRpcMessage;
 use mcp_core::tool::ToolAnnotations;
 use oauth_pkce::PkceOAuth2Client;
 use regex::Regex;

@@ -6,7 +6,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use futures::stream::BoxStream;
 use futures::{stream, FutureExt, Stream, StreamExt, TryStreamExt};
-use mcp_core::protocol::JsonRpcMessage;
+// use rmcp::model::JsonRpcMessage;
+use rmcp::model::JsonRpcMessage;
 
 use crate::agents::final_output_tool::{FINAL_OUTPUT_CONTINUATION_MESSAGE, FINAL_OUTPUT_TOOL_NAME};
 use crate::agents::recipe_tools::dynamic_task_tools::{

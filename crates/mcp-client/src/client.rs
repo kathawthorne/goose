@@ -1,8 +1,8 @@
 use mcp_core::protocol::{
-    CallToolResult, GetPromptResult, Implementation, InitializeResult, JsonRpcError,
-    JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListPromptsResult,
+    CallToolResult, GetPromptResult, Implementation, InitializeResult, JsonRpcNotification, ListPromptsResult,
     ListResourcesResult, ListToolsResult, ReadResourceResult, ServerCapabilities, METHOD_NOT_FOUND,
 };
+use rmcp::model::{JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, JsonRpcError, NumberOrString, Request, JsonRpcVersion2_0};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{
@@ -135,8 +135,8 @@ where
                     Ok(message) => {
                         tracing::info!("Received message: {:?}", message);
                         match message {
-                            JsonRpcMessage::Response(JsonRpcResponse { id: Some(id), .. })
-                            | JsonRpcMessage::Error(JsonRpcError { id: Some(id), .. }) => {
+                            JsonRpcMessage::Response(JsonRpcResponse { id: NumberOrString::Number(id), .. })
+                            | JsonRpcMessage::Error(JsonRpcError { id: NumberOrString::Number(id), .. }) => {
                                 service_ptr.respond(&id.to_string(), Ok(message)).await;
                             }
                             _ => {
@@ -180,10 +180,13 @@ where
         });
 
         let request = JsonRpcMessage::Request(JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(id),
-            method: method.to_string(),
-            params: Some(params),
+            jsonrpc: JsonRpcVersion2_0,
+            id: rmcp::model::NumberOrString::Number(id as u32),
+            request: Request {
+                method: method.to_string(),
+                params: Some(params),
+                extensions: Default::default(),
+            },
         });
 
         let response_msg = service

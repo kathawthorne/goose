@@ -35,7 +35,7 @@ use goose::providers::pricing::initialize_pricing_cache;
 use goose::session;
 use input::InputResult;
 use mcp_core::handler::ToolError;
-use mcp_core::protocol::JsonRpcMessage;
+use rmcp::model::{PromptMessage,JsonRpcMessage};
 use mcp_core::protocol::JsonRpcNotification;
 use rmcp::model::PromptMessage;
 

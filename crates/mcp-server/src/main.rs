@@ -1,7 +1,7 @@
 use anyhow::Result;
 use mcp_core::handler::{PromptError, ResourceError};
 use mcp_core::prompt::{Prompt, PromptArgument};
-use mcp_core::protocol::JsonRpcMessage;
+use rmcp::model::JsonRpcMessage;
 use mcp_core::tool::ToolAnnotations;
 use mcp_core::{handler::ToolError, protocol::ServerCapabilities, resource::Resource, tool::Tool};
 use mcp_server::router::{CapabilitiesBuilder, RouterService};
