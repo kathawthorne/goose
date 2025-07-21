@@ -1,11 +1,12 @@
 use goose::providers::pricing::{get_model_pricing, initialize_pricing_cache, refresh_pricing};
 use std::time::Instant;
+use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_pricing_cache_performance() {
     // Use a unique cache directory for this test to avoid conflicts
-    let test_cache_dir = format!("/tmp/goose_test_cache_perf_{}", std::process::id());
-    std::env::set_var("GOOSE_CACHE_DIR", &test_cache_dir);
+    let temp_dir = TempDir::new().unwrap();
+    std::env::set_var("GOOSE_CACHE_DIR", temp_dir.path());
 
     // Initialize the cache
     let start = Instant::now();
@@ -98,14 +99,13 @@ async fn test_pricing_cache_performance() {
 
     // Clean up
     std::env::remove_var("GOOSE_CACHE_DIR");
-    let _ = std::fs::remove_dir_all(&test_cache_dir);
 }
 
 #[tokio::test]
 async fn test_pricing_refresh() {
     // Use a unique cache directory for this test to avoid conflicts
-    let test_cache_dir = format!("/tmp/goose_test_cache_refresh_{}", std::process::id());
-    std::env::set_var("GOOSE_CACHE_DIR", &test_cache_dir);
+    let temp_dir = TempDir::new().unwrap();
+    std::env::set_var("GOOSE_CACHE_DIR", temp_dir.path());
 
     const MAX_RETRIES: u32 = 5;
     let mut attempt = 0;
@@ -144,7 +144,6 @@ async fn test_pricing_refresh() {
 
     // Clean up
     std::env::remove_var("GOOSE_CACHE_DIR");
-    let _ = std::fs::remove_dir_all(&test_cache_dir);
 }
 
 async fn run_pricing_refresh_test() -> Result<(), String> {
@@ -179,8 +178,8 @@ async fn run_pricing_refresh_test() -> Result<(), String> {
 #[tokio::test]
 async fn test_model_not_in_openrouter() {
     // Use a unique cache directory for this test to avoid conflicts
-    let test_cache_dir = format!("/tmp/goose_test_cache_model_{}", std::process::id());
-    std::env::set_var("GOOSE_CACHE_DIR", &test_cache_dir);
+    let temp_dir = TempDir::new().unwrap();
+    std::env::set_var("GOOSE_CACHE_DIR", temp_dir.path());
 
     initialize_pricing_cache()
         .await
@@ -195,14 +194,14 @@ async fn test_model_not_in_openrouter() {
 
     // Clean up
     std::env::remove_var("GOOSE_CACHE_DIR");
-    let _ = std::fs::remove_dir_all(&test_cache_dir);
+    // TempDir automatically cleans up when dropped
 }
 
 #[tokio::test]
 async fn test_concurrent_access() {
     // Use a unique cache directory for this test to avoid conflicts
-    let test_cache_dir = format!("/tmp/goose_test_cache_concurrent_{}", std::process::id());
-    std::env::set_var("GOOSE_CACHE_DIR", &test_cache_dir);
+    let temp_dir = TempDir::new().unwrap();
+    std::env::set_var("GOOSE_CACHE_DIR", temp_dir.path());
 
     const MAX_RETRIES: u32 = 5;
     let mut attempt = 0;
@@ -241,7 +240,6 @@ async fn test_concurrent_access() {
 
     // Clean up
     std::env::remove_var("GOOSE_CACHE_DIR");
-    let _ = std::fs::remove_dir_all(&test_cache_dir);
 }
 
 async fn run_concurrent_access_test() -> Result<(), String> {
