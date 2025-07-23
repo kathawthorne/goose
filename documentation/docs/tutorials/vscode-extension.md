@@ -6,11 +6,15 @@ description: Use the Goose VS Code Extension to connect Goose to your editor
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
+:::warning 
+This extension is experimental.
+:::
+
 This tutorial covers how to install and use the [Goose VS Code Extension](https://marketplace.visualstudio.com/items?itemName=block.vscode-goose) so you can use Goose interactively for file operations and development workflow management from within VS Code.
 
 :::info Prerequisite
 - [VS Code](https://code.visualstudio.com/) version 1.95.0 or higher is required
-- [Goose Desktop](https://block.github.io/goose/) must be installed and running
+- [Goose Desktop](https://block.github.io/goose/) must be installed and **running**
 :::
 
 ## Configuration
