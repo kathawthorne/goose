@@ -7,7 +7,7 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 :::warning 
-This extension is experimental.
+This extension is experimental and under development.
 :::
 
 This tutorial covers how to install and use the [Goose VS Code Extension](https://marketplace.visualstudio.com/items?itemName=block.vscode-goose) so you can use Goose interactively for file operations and development workflow management from within VS Code.
