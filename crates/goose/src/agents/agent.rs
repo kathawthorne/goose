@@ -539,10 +539,10 @@ impl Agent {
                 let mut frontend_tools = self.frontend_tools.lock().await;
                 for tool in tools {
                     let frontend_tool = FrontendTool {
-                        name: tool.name.clone().parse().unwrap(),
+                        name: tool.name.to_string(),
                         tool: tool.clone(),
                     };
-                    frontend_tools.insert(tool.name.clone().parse().unwrap(), frontend_tool);
+                    frontend_tools.insert(tool.name.to_string(), frontend_tool);
                 }
                 // Store instructions if provided, using "frontend" as the key
                 let mut frontend_instructions = self.frontend_instructions.lock().await;

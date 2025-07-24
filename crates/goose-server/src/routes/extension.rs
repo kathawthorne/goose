@@ -8,6 +8,7 @@ use crate::state::AppState;
 use axum::{extract::State, routing::post, Json, Router};
 use goose::agents::{extension::Envs, ExtensionConfig};
 use http::{HeaderMap, StatusCode};
+use rmcp::model::Tool;
 use serde::{Deserialize, Serialize};
 use tracing;
 
@@ -80,7 +81,7 @@ enum ExtensionConfigRequest {
         /// The name to identify this extension
         name: String,
         /// The tools provided by this extension
-        tools: Vec<mcp_core::tool::Tool>,
+        tools: Vec<Tool>,
         /// Optional instructions for using the tools
         instructions: Option<String>,
     },
@@ -259,15 +260,7 @@ async fn add_extension(
             instructions,
         } => ExtensionConfig::Frontend {
             name,
-            tools: tools
-                .into_iter()
-                .map(|t| rmcp::model::Tool {
-                    name: t.name.into(),
-                    description: Some(std::borrow::Cow::Owned(t.description)),
-                    input_schema: std::sync::Arc::new(t.input_schema.as_object().unwrap().clone()),
-                    annotations: None,
-                })
-                .collect(),
+            tools,
             instructions,
             bundled: None,
         },
