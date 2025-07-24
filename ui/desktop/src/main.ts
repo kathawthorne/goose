@@ -1,19 +1,20 @@
+import type { OpenDialogReturnValue } from 'electron';
 import {
   app,
-  session,
+  App,
   BrowserWindow,
   dialog,
+  Event,
+  globalShortcut,
   ipcMain,
   Menu,
   MenuItem,
   Notification,
   powerSaveBlocker,
+  session,
+  shell,
   Tray,
-  App,
-  globalShortcut,
-  Event,
 } from 'electron';
-import type { OpenDialogReturnValue } from 'electron';
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -32,22 +33,51 @@ import {
   EnvToggles,
   loadSettings,
   saveSettings,
+  SchedulingEngine,
   updateEnvironmentVariables,
   updateSchedulingEngineEnvironment,
-  SchedulingEngine,
 } from './utils/settings';
 import * as crypto from 'crypto';
-import * as electron from 'electron';
+// import electron from "electron";
 import * as yaml from 'yaml';
 import windowStateKeeper from 'electron-window-state';
 import {
-  setupAutoUpdater,
+  getUpdateAvailable,
   registerUpdateIpcHandlers,
   setTrayRef,
+  setupAutoUpdater,
   updateTrayMenu,
-  getUpdateAvailable,
 } from './utils/autoUpdater';
 import { UPDATES_ENABLED } from './updates';
+import { Recipe } from './recipe';
+import './utils/recipeHash';
+
+// API URL constructor for main process before window is ready
+function getApiUrlMain(endpoint: string, dynamicPort: number): string {
+  const host = process.env.GOOSE_API_HOST || 'http://127.0.0.1';
+  const port = dynamicPort || process.env.GOOSE_PORT;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${host}:${port}${cleanEndpoint}`;
+}
+
+// When opening the app with a deeplink, the window is still initializing so we have to duplicate some window dependant logic here.
+async function decodeRecipeMain(deeplink: string, port: number): Promise<Recipe | null> {
+  try {
+    const response = await fetch(getApiUrlMain('/recipes/decode', port), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deeplink }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.recipe;
+    }
+  } catch (error) {
+    console.error('Failed to decode recipe:', error);
+  }
+  return null;
+}
 
 // Updater functions (moved here to keep updates.ts minimal for release replacement)
 function shouldSetupUpdater(): boolean {
@@ -132,7 +162,28 @@ async function ensureTempDirExists(): Promise<string> {
 
 if (started) app.quit();
 
-app.setAsDefaultProtocolClient('goose');
+// In development mode, force registration as the default protocol client
+// In production, register normally
+if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  // Development mode - force registration
+  console.log('[Main] Development mode: Forcing protocol registration for goose://');
+  app.setAsDefaultProtocolClient('goose');
+
+  if (process.platform === 'darwin') {
+    try {
+      // Reset the default handler to ensure dev version takes precedence
+      spawn('open', ['-a', process.execPath, '--args', '--reset-protocol-handler', 'goose'], {
+        detached: true,
+        stdio: 'ignore',
+      });
+    } catch (error) {
+      console.warn('[Main] Could not reset protocol handler:', error);
+    }
+  }
+} else {
+  // Production mode - normal registration
+  app.setAsDefaultProtocolClient('goose');
+}
 
 // Only apply single instance lock on Windows where it's needed for deep links
 let gotTheLock = true;
@@ -149,29 +200,24 @@ if (process.platform === 'win32') {
 
         // If it's a bot/recipe URL, handle it directly by creating a new window
         if (parsedUrl.hostname === 'bot' || parsedUrl.hostname === 'recipe') {
-          app.whenReady().then(() => {
+          app.whenReady().then(async () => {
             const recentDirs = loadRecentDirs();
             const openDir = recentDirs.length > 0 ? recentDirs[0] : null;
 
-            let recipeConfig = null;
-            const configParam = parsedUrl.searchParams.get('config');
-            if (configParam) {
-              try {
-                recipeConfig = JSON.parse(Buffer.from(configParam, 'base64').toString('utf-8'));
+            const recipeDeeplink = parsedUrl.searchParams.get('config');
+            const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
 
-                // Check if this is a scheduled job
-                const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
-                if (scheduledJobId) {
-                  console.log(`[main] Opening scheduled job: ${scheduledJobId}`);
-                  recipeConfig.scheduledJobId = scheduledJobId;
-                  recipeConfig.isScheduledExecution = true;
-                }
-              } catch (e) {
-                console.error('Failed to parse bot config:', e);
-              }
-            }
-
-            createChat(app, undefined, openDir || undefined, undefined, undefined, recipeConfig);
+            createChat(
+              app,
+              undefined,
+              openDir || undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              recipeDeeplink || undefined,
+              scheduledJobId || undefined
+            );
           });
           return; // Skip the rest of the handler
         }
@@ -220,7 +266,7 @@ async function handleProtocolUrl(url: string) {
       existingWindows.length > 0
         ? existingWindows[0]
         : await createChat(app, undefined, openDir || undefined);
-    processProtocolUrl(parsedUrl, targetWindow);
+    await processProtocolUrl(parsedUrl, targetWindow);
   } else {
     // For other URL types, reuse existing window if available
     const existingWindows = BrowserWindow.getAllWindows();
@@ -237,17 +283,17 @@ async function handleProtocolUrl(url: string) {
     if (firstOpenWindow) {
       const webContents = firstOpenWindow.webContents;
       if (webContents.isLoadingMainFrame()) {
-        webContents.once('did-finish-load', () => {
-          processProtocolUrl(parsedUrl, firstOpenWindow);
+        webContents.once('did-finish-load', async () => {
+          await processProtocolUrl(parsedUrl, firstOpenWindow);
         });
       } else {
-        processProtocolUrl(parsedUrl, firstOpenWindow);
+        await processProtocolUrl(parsedUrl, firstOpenWindow);
       }
     }
   }
 }
 
-function processProtocolUrl(parsedUrl: URL, window: BrowserWindow) {
+async function processProtocolUrl(parsedUrl: URL, window: BrowserWindow) {
   const recentDirs = loadRecentDirs();
   const openDir = recentDirs.length > 0 ? recentDirs[0] : null;
 
@@ -256,25 +302,21 @@ function processProtocolUrl(parsedUrl: URL, window: BrowserWindow) {
   } else if (parsedUrl.hostname === 'sessions') {
     window.webContents.send('open-shared-session', pendingDeepLink);
   } else if (parsedUrl.hostname === 'bot' || parsedUrl.hostname === 'recipe') {
-    let recipeConfig = null;
-    const configParam = parsedUrl.searchParams.get('config');
-    if (configParam) {
-      try {
-        recipeConfig = JSON.parse(Buffer.from(configParam, 'base64').toString('utf-8'));
+    const recipeDeeplink = parsedUrl.searchParams.get('config');
+    const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
 
-        // Check if this is a scheduled job
-        const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
-        if (scheduledJobId) {
-          console.log(`[main] Opening scheduled job: ${scheduledJobId}`);
-          recipeConfig.scheduledJobId = scheduledJobId;
-          recipeConfig.isScheduledExecution = true;
-        }
-      } catch (e) {
-        console.error('Failed to parse bot config:', e);
-      }
-    }
     // Create a new window and ignore the passed-in window
-    createChat(app, undefined, openDir || undefined, undefined, undefined, recipeConfig);
+    createChat(
+      app,
+      undefined,
+      openDir || undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      recipeDeeplink || undefined,
+      scheduledJobId || undefined
+    );
   }
   pendingDeepLink = null;
 }
@@ -286,28 +328,24 @@ app.on('open-url', async (_event, url) => {
     const openDir = recentDirs.length > 0 ? recentDirs[0] : null;
 
     // Handle bot/recipe URLs by directly creating a new window
+    console.log('[Main] Received open-url event:', url);
     if (parsedUrl.hostname === 'bot' || parsedUrl.hostname === 'recipe') {
-      let recipeConfig = null;
-      const configParam = parsedUrl.searchParams.get('config');
-      const base64 = decodeURIComponent(configParam || '');
-      if (configParam) {
-        try {
-          recipeConfig = JSON.parse(Buffer.from(base64, 'base64').toString('utf-8'));
-
-          // Check if this is a scheduled job
-          const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
-          if (scheduledJobId) {
-            console.log(`[main] Opening scheduled job: ${scheduledJobId}`);
-            recipeConfig.scheduledJobId = scheduledJobId;
-            recipeConfig.isScheduledExecution = true;
-          }
-        } catch (e) {
-          console.error('Failed to parse bot config:', e);
-        }
-      }
+      console.log('[Main] Detected bot/recipe URL, creating new chat window');
+      const recipeDeeplink = parsedUrl.searchParams.get('config');
+      const scheduledJobId = parsedUrl.searchParams.get('scheduledJob');
 
       // Create a new window directly
-      await createChat(app, undefined, openDir || undefined, undefined, undefined, recipeConfig);
+      await createChat(
+        app,
+        undefined,
+        openDir || undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        recipeDeeplink || undefined,
+        scheduledJobId || undefined
+      );
       return; // Skip the rest of the handler
     }
 
@@ -418,11 +456,15 @@ const getGooseProvider = () => {
   //{env-macro-start}//
   //needed when goose is bundled for a specific provider
   //{env-macro-end}//
-  return [process.env.GOOSE_DEFAULT_PROVIDER, process.env.GOOSE_DEFAULT_MODEL];
+  return [
+    process.env.GOOSE_DEFAULT_PROVIDER,
+    process.env.GOOSE_DEFAULT_MODEL,
+    process.env.GOOSE_PREDEFINED_MODELS,
+  ];
 };
 
 const generateSecretKey = () => {
-  const key = crypto.randomBytes(32).toString('hex');
+  const key = process.env.GOOSE_EXTERNAL_BACKEND ? 'test' : crypto.randomBytes(32).toString('hex');
   process.env.GOOSE_SERVER__SECRET_KEY = key;
   return key;
 };
@@ -442,7 +484,7 @@ const getVersion = () => {
   return process.env.GOOSE_VERSION;
 };
 
-let [provider, model] = getGooseProvider();
+let [provider, model, predefinedModels] = getGooseProvider();
 
 let sharingUrl = getSharingUrl();
 
@@ -451,6 +493,7 @@ let gooseVersion = getVersion();
 let appConfig = {
   GOOSE_DEFAULT_PROVIDER: provider,
   GOOSE_DEFAULT_MODEL: model,
+  GOOSE_PREDEFINED_MODELS: predefinedModels,
   GOOSE_API_HOST: 'http://127.0.0.1',
   GOOSE_PORT: 0,
   GOOSE_WORKING_DIR: '',
@@ -463,14 +506,8 @@ let appConfig = {
 let windowCounter = 0;
 const windowMap = new Map<number, BrowserWindow>();
 
-interface RecipeConfig {
-  id: string;
-  title: string;
-  description: string;
-  instructions: string;
-  activities: string[];
-  prompt: string;
-}
+// Track power save blocker ID globally
+let powerSaveBlockerId: number | null = null;
 
 const createChat = async (
   app: App,
@@ -478,8 +515,10 @@ const createChat = async (
   dir?: string,
   _version?: string,
   resumeSessionId?: string,
-  recipeConfig?: RecipeConfig, // Bot configuration
-  viewType?: string // View type
+  recipe?: Recipe, // Recipe configuration when already loaded, takes precedence over deeplink
+  viewType?: string,
+  recipeDeeplink?: string, // Raw deeplink used as a fallback when recipe is not loaded. Required on new windows as we need to wait for the window to load before decoding.
+  scheduledJobId?: string // Scheduled job ID if applicable
 ) => {
   // Initialize variables for process and configuration
   let port = 0;
@@ -526,29 +565,46 @@ const createChat = async (
     goosedProcess = newGoosedProcess;
   }
 
+  // Decode recipe from deeplink if needed
+  if (!recipe && recipeDeeplink) {
+    const decodedRecipe = await decodeRecipeMain(recipeDeeplink, port);
+    if (decodedRecipe) {
+      recipe = decodedRecipe;
+
+      // Handle scheduled job parameters if present
+      if (scheduledJobId) {
+        recipe.scheduledJobId = scheduledJobId;
+        recipe.isScheduledExecution = true;
+      }
+    }
+  }
+
   // Load and manage window state
   const mainWindowState = windowStateKeeper({
-    defaultWidth: 750,
+    defaultWidth: 940, // large enough to show the sidebar on launch
     defaultHeight: 800,
   });
 
   const mainWindow = new BrowserWindow({
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
-    trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 20 } : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 16 } : undefined,
     vibrancy: process.platform === 'darwin' ? 'window' : undefined,
-    frame: process.platform === 'darwin' ? false : true,
+    frame: process.platform !== 'darwin',
     x: mainWindowState.x,
     y: mainWindowState.y,
     width: mainWindowState.width,
     height: mainWindowState.height,
-    minWidth: 650,
+    minWidth: 750,
     resizable: true,
-    transparent: false,
     useContentSize: true,
     icon: path.join(__dirname, '../images/icon'),
     webPreferences: {
       spellcheck: true,
       preload: path.join(__dirname, 'preload.js'),
+      // Enable features needed for Web Speech API
+      webSecurity: true,
+      nodeIntegration: false,
+      contextIsolation: true,
       additionalArguments: [
         JSON.stringify({
           ...appConfig, // Use the potentially updated appConfig
@@ -557,7 +613,7 @@ const createChat = async (
           REQUEST_DIR: dir,
           GOOSE_BASE_URL_SHARE: sharingUrl,
           GOOSE_VERSION: gooseVersion,
-          recipeConfig: recipeConfig,
+          recipe: recipe,
         }),
       ],
       partition: 'persist:goose', // Add this line to ensure persistence
@@ -611,25 +667,61 @@ const createChat = async (
     GOOSE_WORKING_DIR: working_dir,
     REQUEST_DIR: dir,
     GOOSE_BASE_URL_SHARE: sharingUrl,
-    recipeConfig: recipeConfig,
+    recipe: recipe,
   };
 
   // We need to wait for the window to load before we can access localStorage
   mainWindow.webContents.on('did-finish-load', () => {
     const configStr = JSON.stringify(windowConfig).replace(/'/g, "\\'");
-    mainWindow.webContents.executeJavaScript(`
-      localStorage.setItem('gooseConfig', '${configStr}')
-    `);
+    // Add error handling and retry logic for localStorage access
+    mainWindow.webContents
+      .executeJavaScript(
+        `
+      try {
+        if (typeof Storage !== 'undefined' && window.localStorage) {
+          localStorage.setItem('gooseConfig', '${configStr}');
+        } else {
+          console.warn('localStorage not available, retrying in 100ms');
+          setTimeout(() => {
+            try {
+              localStorage.setItem('gooseConfig', '${configStr}');
+            } catch (e) {
+              console.error('Failed to set localStorage after retry:', e);
+            }
+          }, 100);
+        }
+      } catch (e) {
+        console.error('Failed to access localStorage:', e);
+        // Retry after a short delay
+        setTimeout(() => {
+          try {
+            localStorage.setItem('gooseConfig', '${configStr}');
+          } catch (retryError) {
+            console.error('Failed to set localStorage after retry:', retryError);
+          }
+        }, 100);
+      }
+    `
+      )
+      .catch((error) => {
+        console.error('Failed to execute localStorage script:', error);
+      });
   });
 
   // Handle new window creation for links
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     // Open all links in external browser
     if (url.startsWith('http:') || url.startsWith('https:')) {
-      electron.shell.openExternal(url);
+      shell.openExternal(url);
       return { action: 'deny' };
     }
     return { action: 'allow' };
+  });
+
+  // Handle new-window events (alternative approach for external links)
+  mainWindow.webContents.on('new-window', (event, url) => {
+    event.preventDefault();
+    shell.openExternal(url);
   });
 
   // Load the index.html of the app.
@@ -801,9 +893,43 @@ const openDirectoryDialog = async (
 
     addRecentDir(dirToAdd);
     const currentWindow = BrowserWindow.getFocusedWindow();
-    await createChat(app, undefined, dirToAdd);
+
     if (replaceWindow && currentWindow) {
+      // Replace current window with new one
+      await createChat(app, undefined, dirToAdd);
       currentWindow.close();
+    } else {
+      // Update the working directory in the current window's localStorage
+      if (currentWindow) {
+        try {
+          const updateConfigScript = `
+            try {
+              const currentConfig = JSON.parse(localStorage.getItem('gooseConfig') || '{}');
+              const updatedConfig = {
+                ...currentConfig,
+                GOOSE_WORKING_DIR: '${dirToAdd.replace(/'/g, "\\'")}',
+              };
+              localStorage.setItem('gooseConfig', JSON.stringify(updatedConfig));
+              
+              // Trigger a config update event so the UI can refresh
+              window.dispatchEvent(new CustomEvent('goose-config-updated', { 
+                detail: { GOOSE_WORKING_DIR: '${dirToAdd.replace(/'/g, "\\'")}' } 
+              }));
+            } catch (e) {
+              console.error('Failed to update working directory in localStorage:', e);
+            }
+          `;
+          await currentWindow.webContents.executeJavaScript(updateConfigScript);
+          console.log(`Updated working directory to: ${dirToAdd}`);
+        } catch (error) {
+          console.error('Failed to update working directory:', error);
+          // Fallback: create new window
+          await createChat(app, undefined, dirToAdd);
+        }
+      } else {
+        // No current window, create new one
+        await createChat(app, undefined, dirToAdd);
+      }
     }
   }
   return result;
@@ -1017,6 +1143,36 @@ ipcMain.handle('get-quit-confirmation-state', () => {
   } catch (error) {
     console.error('Error getting quit confirmation state:', error);
     return true;
+  }
+});
+
+// Handle wakelock setting
+ipcMain.handle('set-wakelock', async (_event, enable: boolean) => {
+  try {
+    const settings = loadSettings();
+    settings.enableWakelock = enable;
+    saveSettings(settings);
+
+    // Stop any existing power save blocker when disabling the setting
+    if (!enable && powerSaveBlockerId !== null) {
+      powerSaveBlocker.stop(powerSaveBlockerId);
+      powerSaveBlockerId = null;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error setting wakelock:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('get-wakelock-state', () => {
+  try {
+    const settings = loadSettings();
+    return settings.enableWakelock ?? false;
+  } catch (error) {
+    console.error('Error getting wakelock state:', error);
+    return false;
   }
 });
 
@@ -1386,15 +1542,8 @@ ipcMain.handle('show-message-box', async (_event, options) => {
   return result;
 });
 
-// Handle allowed extensions list fetching
 ipcMain.handle('get-allowed-extensions', async () => {
-  try {
-    const allowList = await getAllowList();
-    return allowList;
-  } catch (error) {
-    console.error('Error fetching allowed extensions:', error);
-    throw error;
-  }
+  return await getAllowList();
 });
 
 const createNewWindow = async (app: App, dir?: string | null) => {
@@ -1444,6 +1593,18 @@ app.whenReady().then(async () => {
   // Register update IPC handlers once (but don't setup auto-updater yet)
   registerUpdateIpcHandlers();
 
+  // Handle microphone permission requests
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    console.log('Permission requested:', permission);
+    // Allow microphone and media access
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      // Default behavior for other permissions
+      callback(true);
+    }
+  });
+
   // Add CSP headers to all sessions
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -1453,8 +1614,8 @@ app.whenReady().then(async () => {
           "default-src 'self';" +
           // Allow inline styles since we use them in our React components
           "style-src 'self' 'unsafe-inline';" +
-          // Scripts only from our app
-          "script-src 'self';" +
+          // Scripts from our app and inline scripts (for theme initialization)
+          "script-src 'self' 'unsafe-inline';" +
           // Images from our app and data: URLs (for base64 images)
           "img-src 'self' data: https:;" +
           // Connect to our local API and specific external services
@@ -1463,10 +1624,10 @@ app.whenReady().then(async () => {
           "object-src 'none';" +
           // Don't allow any frames
           "frame-src 'none';" +
-          // Font sources
-          "font-src 'self';" +
-          // Media sources
-          "media-src 'none';" +
+          // Font sources - allow self, data URLs, and external fonts
+          "font-src 'self' data: https:;" +
+          // Media sources - allow microphone
+          "media-src 'self' mediastream:;" +
           // Form actions
           "form-action 'none';" +
           // Base URI restriction
@@ -1724,21 +1885,18 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on(
-    'create-chat-window',
-    (_, query, dir, version, resumeSessionId, recipeConfig, viewType) => {
-      if (!dir?.trim()) {
-        const recentDirs = loadRecentDirs();
-        dir = recentDirs.length > 0 ? recentDirs[0] : null;
-      }
-
-      // Log the recipeConfig for debugging
-      console.log('Creating chat window with recipeConfig:', recipeConfig);
-
-      // Pass recipeConfig as part of viewOptions when viewType is recipeEditor
-      createChat(app, query, dir, version, resumeSessionId, recipeConfig, viewType);
+  ipcMain.on('create-chat-window', (_, query, dir, version, resumeSessionId, recipe, viewType) => {
+    if (!dir?.trim()) {
+      const recentDirs = loadRecentDirs();
+      dir = recentDirs.length > 0 ? recentDirs[0] : undefined;
     }
-  );
+
+    // Log the recipe for debugging
+    console.log('Creating chat window with recipe:', recipe);
+
+    // Pass recipe as part of viewOptions when viewType is recipeEditor
+    createChat(app, query, dir, version, resumeSessionId, recipe, viewType);
+  });
 
   ipcMain.on('notify', (_event, data) => {
     try {
@@ -1807,24 +1965,19 @@ app.whenReady().then(async () => {
     }
   });
 
-  let powerSaveBlockerId: number | null = null;
-
   ipcMain.handle('start-power-save-blocker', () => {
-    log.info('Starting power save blocker...');
     if (powerSaveBlockerId === null) {
-      powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep');
-      log.info('Started power save blocker');
+      powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
       return true;
     }
+
     return false;
   });
 
   ipcMain.handle('stop-power-save-blocker', () => {
-    log.info('Stopping power save blocker...');
     if (powerSaveBlockerId !== null) {
       powerSaveBlocker.stop(powerSaveBlockerId);
       powerSaveBlockerId = null;
-      log.info('Stopped power save blocker');
       return true;
     }
     return false;
@@ -1892,7 +2045,7 @@ app.whenReady().then(async () => {
         spawn('xdg-open', [url]);
       }
     } catch (error) {
-      console.error('Error opening URL in Chrome:', error);
+      console.error('Error opening URL in browser:', error);
     }
   });
 
@@ -1908,57 +2061,33 @@ app.whenReady().then(async () => {
   });
 });
 
-/**
- * Fetches the allowed extensions list from the remote YAML file if GOOSE_ALLOWLIST is set.
- * If the ALLOWLIST is not set, any are allowed. If one is set, it will warn if the deeplink
- * doesn't match a command from the list.
- * If it fails to load, then it will return an empty list.
- * If the format is incorrect, it will return an empty list.
- * Format of yaml is:
- *
- ```yaml:
- extensions:
-  - id: slack
-    command: uvx mcp_slack
-  - id: knowledge_graph_memory
-    command: npx -y @modelcontextprotocol/server-memory
-  ```
- *
- * @returns A promise that resolves to an array of extension commands that are allowed.
- */
 async function getAllowList(): Promise<string[]> {
   if (!process.env.GOOSE_ALLOWLIST) {
     return [];
   }
 
-  try {
-    // Fetch the YAML file
-    const response = await fetch(process.env.GOOSE_ALLOWLIST);
+  const response = await fetch(process.env.GOOSE_ALLOWLIST);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch allowed extensions: ${response.status} ${response.statusText}`
-      );
-    }
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch allowed extensions: ${response.status} ${response.statusText}`
+    );
+  }
 
-    // Parse the YAML content
-    const yamlContent = await response.text();
-    const parsedYaml = yaml.parse(yamlContent);
+  // Parse the YAML content
+  const yamlContent = await response.text();
+  const parsedYaml = yaml.parse(yamlContent);
 
-    // Extract the commands from the extensions array
-    if (parsedYaml && parsedYaml.extensions && Array.isArray(parsedYaml.extensions)) {
-      const commands = parsedYaml.extensions.map(
-        (ext: { id: string; command: string }) => ext.command
-      );
-      console.log(`Fetched ${commands.length} allowed extension commands`);
-      return commands;
-    } else {
-      console.error('Invalid YAML structure:', parsedYaml);
-      return [];
-    }
-  } catch (error) {
-    console.error('Error in getAllowList:', error);
-    throw error;
+  // Extract the commands from the extensions array
+  if (parsedYaml && parsedYaml.extensions && Array.isArray(parsedYaml.extensions)) {
+    const commands = parsedYaml.extensions.map(
+      (ext: { id: string; command: string }) => ext.command
+    );
+    console.log(`Fetched ${commands.length} allowed extension commands`);
+    return commands;
+  } else {
+    console.error('Invalid YAML structure:', parsedYaml);
+    return [];
   }
 }
 

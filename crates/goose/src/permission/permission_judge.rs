@@ -5,8 +5,8 @@ use crate::message::{Message, MessageContent, ToolRequest};
 use crate::providers::base::Provider;
 use chrono::Utc;
 use indoc::indoc;
+use mcp_core::tool::Tool;
 use mcp_core::tool::ToolAnnotations;
-use mcp_core::{tool::Tool, TextContent};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -81,11 +81,10 @@ fn create_check_messages(tool_requests: Vec<&ToolRequest>) -> Vec<Message> {
         })
         .collect();
     let mut check_messages = vec![];
-    check_messages.push(Message {
-        role: mcp_core::Role::User,
-        created: Utc::now().timestamp(),
-        content: vec![MessageContent::Text(TextContent {
-            text: format!(
+    check_messages.push(Message::new(
+        rmcp::model::Role::User,
+        Utc::now().timestamp(),
+        vec![MessageContent::text(format!(
                 "Here are the tool requests: {:?}\n\nAnalyze the tool requests and list the tools that perform read-only operations. \
                 \n\nGuidelines for Read-Only Operations: \
                 \n- Read-only operations do not modify any data or state. \
@@ -93,10 +92,8 @@ fn create_check_messages(tool_requests: Vec<&ToolRequest>) -> Vec<Message> {
                 \n- Write operations include INSERT, UPDATE, DELETE, and file writing. \
                 \n\nPlease provide a list of tool names that qualify as read-only:",
                 tool_names.join(", "),
-            ),
-            annotations: None,
-        })],
-    });
+            ))],
+    ));
     check_messages
 }
 
@@ -270,7 +267,8 @@ mod tests {
     use crate::providers::errors::ProviderError;
     use chrono::Utc;
     use mcp_core::ToolCall;
-    use mcp_core::{tool::Tool, Role, ToolResult};
+    use mcp_core::{tool::Tool, ToolResult};
+    use rmcp::model::Role;
     use serde_json::json;
     use tempfile::NamedTempFile;
 
@@ -296,10 +294,10 @@ mod tests {
             _tools: &[Tool],
         ) -> anyhow::Result<(Message, ProviderUsage), ProviderError> {
             Ok((
-                Message {
-                    role: Role::Assistant,
-                    created: Utc::now().timestamp(),
-                    content: vec![MessageContent::ToolRequest(ToolRequest {
+                Message::new(
+                    Role::Assistant,
+                    Utc::now().timestamp(),
+                    vec![MessageContent::ToolRequest(ToolRequest {
                         id: "mock_tool_request".to_string(),
                         tool_call: ToolResult::Ok(ToolCall {
                             name: "platform__tool_by_tool_permission".to_string(),
@@ -308,7 +306,7 @@ mod tests {
                             }),
                         }),
                     })],
-                },
+                ),
                 ProviderUsage::new("mock".to_string(), Usage::default()),
             ))
         }
@@ -354,10 +352,10 @@ mod tests {
 
     #[test]
     fn test_extract_read_only_tools() {
-        let message = Message {
-            role: Role::Assistant,
-            created: Utc::now().timestamp(),
-            content: vec![MessageContent::ToolRequest(ToolRequest {
+        let message = Message::new(
+            Role::Assistant,
+            Utc::now().timestamp(),
+            vec![MessageContent::ToolRequest(ToolRequest {
                 id: "tool_2".to_string(),
                 tool_call: ToolResult::Ok(ToolCall {
                     name: "platform__tool_by_tool_permission".to_string(),
@@ -366,7 +364,7 @@ mod tests {
                     }),
                 }),
             })],
-        };
+        );
 
         let result = extract_read_only_tools(&message);
         assert!(result.is_some());

@@ -1,8 +1,14 @@
-import { useState, useCallback, useEffect, useRef, useId } from 'react';
+import { useState, useCallback, useEffect, useRef, useId, useReducer } from 'react';
 import useSWR from 'swr';
 import { getSecretKey } from '../config';
 import { Message, createUserMessage, hasCompletedToolCalls } from '../types/message';
 import { getSessionHistory } from '../api';
+
+let messageIdCounter = 0;
+
+function generateMessageId(): string {
+  return `msg-${Date.now()}-${++messageIdCounter}`;
+}
 
 // Ensure TextDecoder is available in the global scope
 const TextDecoder = globalThis.TextDecoder;
@@ -148,6 +154,12 @@ export interface UseMessageStreamHelpers {
   /** Whether the API request is in progress */
   isLoading: boolean;
 
+  /** Whether we're waiting for the first response from LLM */
+  isWaiting: boolean;
+
+  /** Whether we're actively streaming response content */
+  isStreaming: boolean;
+
   /** Add a tool result to a tool call */
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: unknown }) => void;
 
@@ -161,6 +173,9 @@ export interface UseMessageStreamHelpers {
 
   /** Session metadata including token counts */
   sessionMetadata: SessionMetadata | null;
+
+  /** Clear error state */
+  setError: (error: Error | undefined) => void;
 }
 
 /**
@@ -214,6 +229,17 @@ export function useMessageStream({
     null
   );
 
+  // Track waiting vs streaming states
+  const { data: isWaiting = false, mutate: mutateWaiting } = useSWR<boolean>(
+    [chatKey, 'waiting'],
+    null
+  );
+
+  const { data: isStreaming = false, mutate: mutateStreaming } = useSWR<boolean>(
+    [chatKey, 'streaming'],
+    null
+  );
+
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [chatKey, 'error'],
     null
@@ -234,6 +260,9 @@ export function useMessageStream({
       body,
     };
   }, [headers, body]);
+
+  // TODO: not this?
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
 
   // Process the SSE stream from the server
   const processMessageStream = useCallback(
@@ -270,9 +299,15 @@ export function useMessageStream({
 
                 switch (parsedEvent.type) {
                   case 'Message': {
+                    // Transition from waiting to streaming on first message
+                    mutateWaiting(false);
+                    mutateStreaming(true);
+
                     // Create a new message object with the properties preserved or defaulted
                     const newMessage = {
                       ...parsedEvent.message,
+                      // Ensure the message has an ID - if not provided, generate one
+                      id: parsedEvent.message.id || generateMessageId(),
                       // Only set to true if it's undefined (preserve false values)
                       display:
                         parsedEvent.message.display === undefined
@@ -285,7 +320,19 @@ export function useMessageStream({
                     };
 
                     // Update messages with the new message
-                    currentMessages = [...currentMessages, newMessage];
+                    if (
+                      newMessage.id &&
+                      currentMessages.length > 0 &&
+                      currentMessages[currentMessages.length - 1].id === newMessage.id
+                    ) {
+                      // If the last message has the same ID, update it instead of adding a new one
+                      const lastMessage = currentMessages[currentMessages.length - 1];
+                      lastMessage.content = [...lastMessage.content, ...newMessage.content];
+                      forceUpdate();
+                    } else {
+                      currentMessages = [...currentMessages, newMessage];
+                    }
+
                     mutate(currentMessages, false);
                     break;
                   }
@@ -308,8 +355,45 @@ export function useMessageStream({
                     break;
                   }
 
-                  case 'Error':
-                    throw new Error(parsedEvent.error);
+                  case 'Error': {
+                    // Check if this is a token limit error (more specific detection)
+                    const errorMessage = parsedEvent.error;
+                    const isTokenLimitError =
+                      errorMessage &&
+                      ((errorMessage.toLowerCase().includes('token') &&
+                        errorMessage.toLowerCase().includes('limit')) ||
+                        (errorMessage.toLowerCase().includes('context') &&
+                          errorMessage.toLowerCase().includes('length') &&
+                          errorMessage.toLowerCase().includes('exceeded')));
+
+                    // If this is a token limit error, create a contextLengthExceeded message instead of throwing
+                    if (isTokenLimitError) {
+                      const contextMessage: Message = {
+                        id: generateMessageId(),
+                        role: 'assistant',
+                        created: Math.floor(Date.now() / 1000),
+                        content: [
+                          {
+                            type: 'contextLengthExceeded',
+                            msg: errorMessage,
+                          },
+                        ],
+                        display: true,
+                        sendToLLM: false,
+                      };
+
+                      currentMessages = [...currentMessages, contextMessage];
+                      mutate(currentMessages, false);
+
+                      // Clear any existing error state since we handled this as a context message
+                      setError(undefined);
+                      break; // Don't throw error, just add the message
+                    }
+
+                    // For non-token-limit errors, still throw the error
+                    const error = new Error(parsedEvent.error);
+                    throw error;
+                  }
 
                   case 'Finish': {
                     // Call onFinish with the last message if available
@@ -317,15 +401,16 @@ export function useMessageStream({
                       const lastMessage = currentMessages[currentMessages.length - 1];
                       onFinish(lastMessage, parsedEvent.reason);
                     }
-                    
+
                     // Fetch updated session metadata with token counts
-                    const sessionId = (extraMetadataRef.current.body as Record<string, unknown>)?.session_id as string;
+                    const sessionId = (extraMetadataRef.current.body as Record<string, unknown>)
+                      ?.session_id as string;
                     if (sessionId) {
                       try {
                         const sessionResponse = await getSessionHistory({
                           path: { session_id: sessionId },
                         });
-                        
+
                         if (sessionResponse.data?.metadata) {
                           setSessionMetadata({
                             workingDir: sessionResponse.data.metadata.working_dir,
@@ -335,9 +420,12 @@ export function useMessageStream({
                             totalTokens: sessionResponse.data.metadata.total_tokens || null,
                             inputTokens: sessionResponse.data.metadata.input_tokens || null,
                             outputTokens: sessionResponse.data.metadata.output_tokens || null,
-                            accumulatedTotalTokens: sessionResponse.data.metadata.accumulated_total_tokens || null,
-                            accumulatedInputTokens: sessionResponse.data.metadata.accumulated_input_tokens || null,
-                            accumulatedOutputTokens: sessionResponse.data.metadata.accumulated_output_tokens || null,
+                            accumulatedTotalTokens:
+                              sessionResponse.data.metadata.accumulated_total_tokens || null,
+                            accumulatedInputTokens:
+                              sessionResponse.data.metadata.accumulated_input_tokens || null,
+                            accumulatedOutputTokens:
+                              sessionResponse.data.metadata.accumulated_output_tokens || null,
                           });
                         }
                       } catch (error) {
@@ -352,6 +440,11 @@ export function useMessageStream({
                 if (onError && e instanceof Error) {
                   onError(e);
                 }
+                // Don't re-throw here, let the error be handled by the outer catch
+                // Instead, set the error state directly
+                if (e instanceof Error) {
+                  setError(e);
+                }
               }
             }
           }
@@ -362,6 +455,8 @@ export function useMessageStream({
           if (onError) {
             onError(e);
           }
+          // Re-throw the error so it gets caught by sendRequest and sets the error state
+          throw e;
         }
       } finally {
         reader.releaseLock();
@@ -369,7 +464,7 @@ export function useMessageStream({
 
       return currentMessages;
     },
-    [mutate, onFinish, onError]
+    [mutate, mutateWaiting, mutateStreaming, onFinish, onError, forceUpdate, setError]
   );
 
   // Send a request to the server
@@ -377,6 +472,8 @@ export function useMessageStream({
     async (requestMessages: Message[]) => {
       try {
         mutateLoading(true);
+        mutateWaiting(true); // Start in waiting state
+        mutateStreaming(false);
         setError(undefined);
 
         // Create abort controller
@@ -385,12 +482,6 @@ export function useMessageStream({
 
         // Filter out messages where sendToLLM is explicitly false
         const filteredMessages = requestMessages.filter((message) => message.sendToLLM !== false);
-
-        // Log request details for debugging
-        console.log('Request details:', {
-          messages: filteredMessages,
-          body: extraMetadataRef.current.body,
-        });
 
         // Send request to the server
         const response = await fetch(api, {
@@ -454,10 +545,22 @@ export function useMessageStream({
         setError(err as Error);
       } finally {
         mutateLoading(false);
+        mutateWaiting(false);
+        mutateStreaming(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, processMessageStream, mutateLoading, setError, onResponse, onError, maxSteps]
+    [
+      api,
+      processMessageStream,
+      mutateLoading,
+      mutateWaiting,
+      mutateStreaming,
+      setError,
+      onResponse,
+      onError,
+      maxSteps,
+    ]
   );
 
   // Append a new message and send request
@@ -465,8 +568,6 @@ export function useMessageStream({
     async (message: Message | string) => {
       // If a string is passed, convert it to a Message object
       const messageToAppend = typeof message === 'string' ? createUserMessage(message) : message;
-
-      console.log('Appending message:', JSON.stringify(messageToAppend, null, 2));
 
       const currentMessages = [...messagesRef.current, messageToAppend];
       mutate(currentMessages, false);
@@ -557,6 +658,7 @@ export function useMessageStream({
 
       // Create a tool response message
       const toolResponseMessage: Message = {
+        id: generateMessageId(),
         role: 'user' as const,
         created: Math.floor(Date.now() / 1000),
         content: [
@@ -603,10 +705,13 @@ export function useMessageStream({
     handleInputChange,
     handleSubmit,
     isLoading: isLoading || false,
+    isWaiting: isWaiting || false,
+    isStreaming: isStreaming || false,
     addToolResult,
     updateMessageStreamBody,
     notifications,
     currentModelInfo,
     sessionMetadata,
+    setError,
   };
 }

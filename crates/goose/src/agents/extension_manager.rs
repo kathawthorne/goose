@@ -19,8 +19,9 @@ use crate::agents::extension::Envs;
 use crate::config::{Config, ExtensionConfigManager};
 use crate::prompt_template;
 use mcp_client::client::{ClientCapabilities, ClientInfo, McpClient, McpClientTrait};
-use mcp_client::transport::{SseTransport, StdioTransport, Transport};
-use mcp_core::{prompt::Prompt, Content, Tool, ToolCall, ToolError};
+use mcp_client::transport::{SseTransport, StdioTransport, StreamableHttpTransport, Transport};
+use mcp_core::{Tool, ToolCall, ToolError};
+use rmcp::model::{Content, Prompt, Resource, ResourceContents};
 use serde_json::Value;
 
 // By default, we set it to Jan 1, 2020 if the resource does not have a timestamp
@@ -198,6 +199,28 @@ impl ExtensionManager {
                     .await?,
                 )
             }
+            ExtensionConfig::StreamableHttp {
+                uri,
+                envs,
+                env_keys,
+                headers,
+                timeout,
+                ..
+            } => {
+                let all_envs = merge_environments(envs, env_keys, &sanitized_name).await?;
+                let transport =
+                    StreamableHttpTransport::with_headers(uri, all_envs, headers.clone());
+                let handle = transport.start().await?;
+                Box::new(
+                    McpClient::connect(
+                        handle,
+                        Duration::from_secs(
+                            timeout.unwrap_or(crate::config::DEFAULT_EXTENSION_TIMEOUT),
+                        ),
+                    )
+                    .await?,
+                )
+            }
             ExtensionConfig::Stdio {
                 cmd,
                 args,
@@ -222,6 +245,7 @@ impl ExtensionManager {
             ExtensionConfig::Builtin {
                 name,
                 display_name: _,
+                description: _,
                 timeout,
                 bundled: _,
             } => {
@@ -302,7 +326,7 @@ impl ExtensionManager {
         let init_result = client
             .initialize(info, capabilities)
             .await
-            .map_err(|e| ExtensionError::Initialization(config.clone(), e))?;
+            .map_err(|e| ExtensionError::Initialization(Box::new(config.clone()), e))?;
 
         if let Some(instructions) = init_result.instructions {
             self.instructions
@@ -451,23 +475,15 @@ impl ExtensionManager {
             for resource in resources.resources {
                 // Skip reading the resource if it's not marked active
                 // This avoids blowing up the context with inactive resources
-                if !resource.is_active() {
+                if !resource_is_active(&resource) {
                     continue;
                 }
 
                 if let Ok(contents) = client_guard.read_resource(&resource.uri).await {
                     for content in contents.contents {
                         let (uri, content_str) = match content {
-                            mcp_core::resource::ResourceContents::TextResourceContents {
-                                uri,
-                                text,
-                                ..
-                            } => (uri, text),
-                            mcp_core::resource::ResourceContents::BlobResourceContents {
-                                uri,
-                                blob,
-                                ..
-                            } => (uri, blob),
+                            ResourceContents::TextResourceContents { uri, text, .. } => (uri, text),
+                            ResourceContents::BlobResourceContents { uri, blob, .. } => (uri, blob),
                         };
 
                         result.push(ResourceItem::new(
@@ -574,8 +590,7 @@ impl ExtensionManager {
         let mut result = Vec::new();
         for content in read_result.contents {
             // Only reading the text resource content; skipping the blob content cause it's too long
-            if let mcp_core::resource::ResourceContents::TextResourceContents { text, .. } = content
-            {
+            if let ResourceContents::TextResourceContents { text, .. } = content {
                 let content_str = format!("{}\n\n{}", uri, text);
                 result.push(Content::text(content_str));
             }
@@ -799,13 +814,16 @@ impl ExtensionManager {
                     ExtensionConfig::Sse {
                         description, name, ..
                     }
+                    | ExtensionConfig::StreamableHttp {
+                        description, name, ..
+                    }
                     | ExtensionConfig::Stdio {
                         description, name, ..
                     }
                     | ExtensionConfig::InlinePython {
                         description, name, ..
                     } => {
-                        // For SSE/Stdio/InlinePython, use description if available
+                        // For SSE/StreamableHttp/Stdio/InlinePython, use description if available
                         description
                             .as_ref()
                             .map(|s| s.to_string())
@@ -849,15 +867,20 @@ impl ExtensionManager {
     }
 }
 
+fn resource_is_active(resource: &Resource) -> bool {
+    resource.priority().is_some_and(|p| (p - 1.0).abs() < 1e-6)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use mcp_client::client::Error;
     use mcp_client::client::McpClientTrait;
     use mcp_core::protocol::{
-        CallToolResult, GetPromptResult, InitializeResult, JsonRpcMessage, ListPromptsResult,
-        ListResourcesResult, ListToolsResult, ReadResourceResult,
+        CallToolResult, GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult,
+        ListToolsResult, ReadResourceResult,
     };
+    use rmcp::model::JsonRpcMessage;
     use serde_json::json;
     use tokio::sync::mpsc;
 

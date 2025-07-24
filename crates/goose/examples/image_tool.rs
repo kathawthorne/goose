@@ -1,14 +1,12 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use goose::{
     message::Message,
-    providers::{databricks::DatabricksProvider, openai::OpenAiProvider},
+    providers::{bedrock::BedrockProvider, databricks::DatabricksProvider, openai::OpenAiProvider},
 };
-use mcp_core::{
-    content::Content,
-    tool::{Tool, ToolCall},
-};
+use mcp_core::tool::{Tool, ToolCall};
+use rmcp::model::Content;
 use serde_json::json;
 use std::fs;
 
@@ -21,6 +19,7 @@ async fn main() -> Result<()> {
     let providers: Vec<Box<dyn goose::providers::base::Provider + Send + Sync>> = vec![
         Box::new(DatabricksProvider::default()),
         Box::new(OpenAiProvider::default()),
+        Box::new(BedrockProvider::default()),
     ];
 
     for provider in providers {
