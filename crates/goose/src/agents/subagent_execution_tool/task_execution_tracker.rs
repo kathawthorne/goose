@@ -3,7 +3,7 @@ use rmcp::object;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{Duration, Instant};
+use tokio::time::{sleep, Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 use crate::agents::subagent_execution_tool::notification_events::{
@@ -22,6 +22,7 @@ pub enum DisplayMode {
 }
 
 const THROTTLE_INTERVAL_MS: u64 = 250;
+const COMPLETION_NOTIFICATION_DELAY_MS: u64 = 500;
 
 fn format_task_metadata(task_info: &TaskInfo) -> String {
     if let Some(params) = task_info.task.get_command_parameters() {
@@ -309,7 +310,7 @@ impl TaskExecutionTracker {
             .collect();
 
         let event = TaskExecutionNotificationEvent::tasks_complete(stats, failed_tasks);
-
         self.try_send_notification(event, "tasks complete");
+        sleep(Duration::from_millis(COMPLETION_NOTIFICATION_DELAY_MS)).await;
     }
 }
