@@ -12,6 +12,7 @@ use crate::agents::subagent_execution_tool::notification_events::{
 };
 use crate::agents::subagent_execution_tool::task_types::{Task, TaskInfo, TaskResult, TaskStatus};
 use crate::agents::subagent_execution_tool::utils::{count_by_status, get_task_name};
+use crate::utils::is_token_cancelled;
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
@@ -101,9 +102,7 @@ impl TaskExecutionTracker {
     }
 
     fn is_cancelled(&self) -> bool {
-        self.cancellation_token
-            .as_ref()
-            .is_some_and(|t| t.is_cancelled())
+        is_token_cancelled(&self.cancellation_token)
     }
 
     fn log_notification_error(
@@ -311,6 +310,7 @@ impl TaskExecutionTracker {
 
         let event = TaskExecutionNotificationEvent::tasks_complete(stats, failed_tasks);
         self.try_send_notification(event, "tasks complete");
+        // Wait for the notification to be recieved and displayed before clearing the tasks
         sleep(Duration::from_millis(COMPLETION_NOTIFICATION_DELAY_MS)).await;
     }
 }
