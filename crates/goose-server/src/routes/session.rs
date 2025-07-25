@@ -14,7 +14,7 @@ use goose::message::Message;
 use goose::session;
 use goose::session::info::{get_valid_sorted_sessions, SessionInfo, SortOrder};
 use goose::session::SessionMetadata;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use utoipa::ToSchema;
 
@@ -34,6 +34,22 @@ pub struct SessionHistoryResponse {
     metadata: SessionMetadata,
     /// List of messages in the session conversation
     messages: Vec<Message>,
+}
+
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSessionRequest {
+    /// New description for the session
+    description: String,
+}
+
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSessionResponse {
+    /// Success status
+    success: bool,
+    /// Updated session metadata
+    metadata: SessionMetadata,
 }
 
 #[derive(Serialize, ToSchema, Debug)]
@@ -129,6 +145,58 @@ async fn get_session_history(
         session_id,
         metadata,
         messages,
+    }))
+}
+
+#[utoipa::path(
+    put,
+    path = "/sessions/{session_id}",
+    params(
+        ("session_id" = String, Path, description = "Unique identifier for the session")
+    ),
+    request_body = UpdateSessionRequest,
+    responses(
+        (status = 200, description = "Session updated successfully", body = UpdateSessionResponse),
+        (status = 401, description = "Unauthorized - Invalid or missing API key"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(
+        ("api_key" = [])
+    ),
+    tag = "Session Management"
+)]
+// Update a session's metadata (specifically the description)
+async fn update_session(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(request): Json<UpdateSessionRequest>,
+) -> Result<Json<UpdateSessionResponse>, StatusCode> {
+    verify_secret_key(&headers, &state)?;
+
+    let session_path = match session::get_path(session::Identifier::Name(session_id.clone())) {
+        Ok(path) => path,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Read existing metadata
+    let mut metadata = session::read_metadata(&session_path).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Update the description
+    metadata.description = request.description;
+
+    // Save the updated metadata
+    session::update_metadata(&session_path, &metadata)
+        .await
+        .map_err(|e| {
+            error!("Failed to update session metadata: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(UpdateSessionResponse {
+        success: true,
+        metadata,
     }))
 }
 
@@ -304,7 +372,7 @@ async fn get_activity_heatmap(
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/sessions", get(list_sessions))
-        .route("/sessions/{session_id}", get(get_session_history))
+        .route("/sessions/{session_id}", get(get_session_history).put(update_session))
         .route("/sessions/insights", get(get_session_insights))
         .route("/sessions/activity-heatmap", get(get_activity_heatmap))
         .with_state(state)
