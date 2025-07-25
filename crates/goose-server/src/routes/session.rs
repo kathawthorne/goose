@@ -180,6 +180,11 @@ async fn update_session(
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
 
+    // Check if the session file exists first
+    if !session_path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     // Read existing metadata
     let mut metadata = session::read_metadata(&session_path).map_err(|_| StatusCode::NOT_FOUND)?;
 

@@ -37,7 +37,9 @@ export type ConfigKeyQuery = {
 };
 
 export type ConfigResponse = {
-    config: {};
+    config: {
+        [key: string]: unknown;
+    };
 };
 
 export type Content = {
@@ -773,6 +775,21 @@ export type ToolResponse = {
 
 export type UpdateScheduleRequest = {
     cron: string;
+};
+
+export type UpdateSessionRequest = {
+    /**
+     * New description for the session
+     */
+    description: string;
+};
+
+export type UpdateSessionResponse = {
+    metadata: SessionMetadata;
+    /**
+     * Success status
+     */
+    success: boolean;
 };
 
 export type UpsertConfigQuery = {
@@ -1640,6 +1657,42 @@ export type GetSessionHistoryResponses = {
 };
 
 export type GetSessionHistoryResponse = GetSessionHistoryResponses[keyof GetSessionHistoryResponses];
+
+export type UpdateSessionData = {
+    body: UpdateSessionRequest;
+    path: {
+        /**
+         * Unique identifier for the session
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/sessions/{session_id}';
+};
+
+export type UpdateSessionErrors = {
+    /**
+     * Unauthorized - Invalid or missing API key
+     */
+    401: unknown;
+    /**
+     * Session not found
+     */
+    404: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type UpdateSessionResponses = {
+    /**
+     * Session updated successfully
+     */
+    200: UpdateSessionResponse;
+};
+
+export type UpdateSessionResponse2 = UpdateSessionResponses[keyof UpdateSessionResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
