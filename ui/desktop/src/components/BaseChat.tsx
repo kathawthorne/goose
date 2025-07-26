@@ -269,7 +269,6 @@ function BaseChatContent({
     initialTitle: initialTitleForSession,
     messages: messages, // Pass messages to enable auto-generation
   });
-
   useEffect(() => {
     window.electron.logInfo(
       'Initial messages when resuming session: ' + JSON.stringify(chat.messages, null, 2)
@@ -396,6 +395,19 @@ function BaseChatContent({
                     console.log('Change profile clicked');
                   }}
                   showBorder={true}
+                />
+              </div>
+            )}
+
+            {/* Session title header - show when there are messages and no recipe */}
+            {!recipeConfig?.title && filteredMessages.length > 0 && sessionTitle && (
+              <div className="sticky top-0 z-10 bg-background-default px-0 -mx-6 mb-6 pt-6">
+                <EditableTitle
+                  title={sessionTitle}
+                  onSave={updateTitle}
+                  placeholder="Session Title"
+                  maxLength={100}
+                  className="mb-4"
                 />
               </div>
             )}

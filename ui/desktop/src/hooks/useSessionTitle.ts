@@ -117,192 +117,192 @@ export const useSessionTitle = ({
       return;
     }
 
-          const initializeTitle = async () => {
-        // Check if this session is still current
-        if (sessionId !== currentSessionIdRef.current) {
-          return;
-        }
-
-        try {
-        // If we have an initialTitle (from session metadata), use it immediately
-        if (initialTitle && initialTitle.trim() !== '') {
-          // Only update if we're not stabilized AND not manually edited
-          if (!isStabilized && !isManuallyEdited) {
-            console.log('Using initialTitle for session', sessionId, ':', initialTitle);
-            if (sessionId === currentSessionIdRef.current) {
-              setTitle(initialTitle);
-              setHasExistingTitle(true);
-              setIsStabilized(true);
-              isInitializedRef.current = true;
-            }
-          }
-          return;
-        }
-
-        // If no initialTitle but we have a sessionId, try to fetch from API
-        if (sessionId && sessionId !== 'new') {
-          console.log('Fetching title from API for session:', sessionId);
-          const response = await getSessionHistory({
-            path: { session_id: sessionId },
-          });
-
-          // Check if this operation is still relevant (session might have changed during async call)
-          if (sessionId !== currentSessionIdRef.current) {
-            console.log('Session changed during API call, ignoring result');
-            return;
-          }
-
-          if (response.data?.metadata?.description) {
-            console.log('Fetched title from API:', response.data.metadata.description);
-            setTitle(response.data.metadata.description);
-            setHasExistingTitle(true);
-            setIsStabilized(true);
-          } else {
-            console.log('No title found in API response for session:', sessionId);
-            setTitle('');
-            setHasExistingTitle(false);
-          }
-        } else {
-          // New session - no existing title
-          console.log('New session, no existing title');
-          setTitle('');
-          setHasExistingTitle(false);
-        }
-
-        isInitializedRef.current = true;
-      } catch (err) {
-        console.warn('Failed to fetch session title from API:', err);
-        if (sessionId === currentSessionIdRef.current) {
-          setTitle('');
-          setHasExistingTitle(false);
-          isInitializedRef.current = true;
-        }
-      }
-    };
-
-    // Store the promise to prevent multiple concurrent initializations
-    if (!initializationPromiseRef.current) {
-      initializationPromiseRef.current = initializeTitle();
-    }
-  }, [sessionId, initialTitle, isStabilized, isManuallyEdited]);
-
-  const updateTitle = useCallback(
-    async (newTitle: string) => {
-      console.log('updateTitle called:', { sessionId, newTitle, currentTitle: title });
-
-      // Prevent concurrent updates
-      if (isUpdating) {
-        console.log('Update already in progress, skipping');
+        const initializeTitle = async () => {
+      // Check if this session is still current
+      if (sessionId !== currentSessionIdRef.current) {
         return;
       }
 
-      setIsUpdating(true);
-      setError(null);
-
       try {
-        console.log('Calling updateSession API:', { sessionId, description: newTitle });
-        await updateSession({
+      // If we have an initialTitle (from session metadata), use it immediately
+      if (initialTitle && initialTitle.trim() !== '') {
+        // Only update if we're not stabilized AND not manually edited
+        if (!isStabilized && !isManuallyEdited) {
+          console.log('Using initialTitle for session', sessionId, ':', initialTitle);
+          if (sessionId === currentSessionIdRef.current) {
+            setTitle(initialTitle);
+            setHasExistingTitle(true);
+            setIsStabilized(true);
+            isInitializedRef.current = true;
+          }
+        }
+        return;
+      }
+
+      // If no initialTitle but we have a sessionId, try to fetch from API
+      if (sessionId && sessionId !== 'new') {
+        console.log('Fetching title from API for session:', sessionId);
+        const response = await getSessionHistory({
           path: { session_id: sessionId },
-          body: { description: newTitle },
         });
 
-        // Only update state if this is still the current session
-        if (sessionId === currentSessionIdRef.current) {
-          console.log('updateSession API successful, updating local state');
-          setTitle(newTitle);
+        // Check if this operation is still relevant (session might have changed during async call)
+        if (sessionId !== currentSessionIdRef.current) {
+          console.log('Session changed during API call, ignoring result');
+          return;
+        }
+
+        if (response.data?.metadata?.description) {
+          console.log('Fetched title from API:', response.data.metadata.description);
+          setTitle(response.data.metadata.description);
           setHasExistingTitle(true);
           setIsStabilized(true);
-          setIsManuallyEdited(true);
-          console.log('Title update completed:', { newTitle, isManuallyEdited: true });
+        } else {
+          console.log('No title found in API response for session:', sessionId);
+          setTitle('');
+          setHasExistingTitle(false);
         }
-      } catch (err) {
-        console.error('updateSession API failed:', err);
-        if (sessionId === currentSessionIdRef.current) {
-          const errorMessage = err instanceof Error ? err.message : 'Failed to update session title';
-          setError(errorMessage);
-        }
-        throw err; // Re-throw so EditableTitle can handle it
-      } finally {
-        if (sessionId === currentSessionIdRef.current) {
-          setIsUpdating(false);
-        }
+      } else {
+        // New session - no existing title
+        console.log('New session, no existing title');
+        setTitle('');
+        setHasExistingTitle(false);
       }
-    },
-    [sessionId, title, isUpdating]
-  );
 
-  // Auto-generate title from first message when it's added
-  useEffect(() => {
-    // Only auto-generate if we're initialized and meet all conditions
-    if (
-      !isInitializedRef.current ||
-      sessionId !== currentSessionIdRef.current ||
-      hasExistingTitle ||
-      title ||
-      isStabilized ||
-      isManuallyEdited ||
-      isAutoGenerating ||
-      messages.length !== 1 ||
-      messages[0]?.role !== 'user'
-    ) {
-      return;
+      isInitializedRef.current = true;
+    } catch (err) {
+      console.warn('Failed to fetch session title from API:', err);
+      if (sessionId === currentSessionIdRef.current) {
+        setTitle('');
+        setHasExistingTitle(false);
+        isInitializedRef.current = true;
+      }
     }
-
-    // Extract text content from the message
-    const messageContent = messages[0]?.content;
-    let messageText = '';
-
-    if (Array.isArray(messageContent)) {
-      // Find text content in the message content array
-      const textContent = messageContent.find((c) => c.type === 'text');
-      messageText = textContent?.text || '';
-    } else if (typeof messageContent === 'string') {
-      messageText = messageContent;
-    }
-
-    if (!messageText.trim()) {
-      return;
-    }
-
-    const generatedTitle = generateTitleFromMessage(messageText);
-    if (!generatedTitle) {
-      return;
-    }
-
-    console.log('Auto-generating title for session', sessionId, ':', generatedTitle);
-    setIsAutoGenerating(true);
-
-    // Auto-update the session title
-    updateTitle(generatedTitle)
-      .then(() => {
-        // Only update state if this is still the current session
-        if (sessionId === currentSessionIdRef.current) {
-          setHasExistingTitle(true);
-          setIsStabilized(true);
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to auto-generate session title:', err);
-      })
-      .finally(() => {
-        if (sessionId === currentSessionIdRef.current) {
-          setIsAutoGenerating(false);
-        }
-      });
-  }, [sessionId, hasExistingTitle, title, isStabilized, isManuallyEdited, isAutoGenerating, messages, updateTitle]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
-
-  return {
-    title,
-    updateTitle,
-    isUpdating,
-    isAutoGenerating,
-    error,
   };
+
+  // Store the promise to prevent multiple concurrent initializations
+  if (!initializationPromiseRef.current) {
+    initializationPromiseRef.current = initializeTitle();
+  }
+}, [sessionId, initialTitle, isStabilized, isManuallyEdited]);
+
+const updateTitle = useCallback(
+  async (newTitle: string) => {
+    console.log('updateTitle called:', { sessionId, newTitle, currentTitle: title });
+
+    // Prevent concurrent updates
+    if (isUpdating) {
+      console.log('Update already in progress, skipping');
+      return;
+    }
+
+    setIsUpdating(true);
+    setError(null);
+
+    try {
+      console.log('Calling updateSession API:', { sessionId, description: newTitle });
+      await updateSession({
+        path: { session_id: sessionId },
+        body: { description: newTitle },
+      });
+
+      // Only update state if this is still the current session
+      if (sessionId === currentSessionIdRef.current) {
+        console.log('updateSession API successful, updating local state');
+        setTitle(newTitle);
+        setHasExistingTitle(true);
+        setIsStabilized(true);
+        setIsManuallyEdited(true);
+        console.log('Title update completed:', { newTitle, isManuallyEdited: true });
+      }
+    } catch (err) {
+      console.error('updateSession API failed:', err);
+      if (sessionId === currentSessionIdRef.current) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to update session title';
+        setError(errorMessage);
+      }
+      throw err; // Re-throw so EditableTitle can handle it
+    } finally {
+      if (sessionId === currentSessionIdRef.current) {
+        setIsUpdating(false);
+      }
+    }
+  },
+  [sessionId, title, isUpdating]
+);
+
+// Auto-generate title from first message when it's added
+useEffect(() => {
+  // Only auto-generate if we're initialized and meet all conditions
+  if (
+    !isInitializedRef.current ||
+    sessionId !== currentSessionIdRef.current ||
+    hasExistingTitle ||
+    title ||
+    isStabilized ||
+    isManuallyEdited ||
+    isAutoGenerating ||
+    messages.length !== 1 ||
+    messages[0]?.role !== 'user'
+  ) {
+    return;
+  }
+
+  // Extract text content from the message
+  const messageContent = messages[0]?.content;
+  let messageText = '';
+
+  if (Array.isArray(messageContent)) {
+    // Find text content in the message content array
+    const textContent = messageContent.find((c) => c.type === 'text');
+    messageText = textContent?.text || '';
+  } else if (typeof messageContent === 'string') {
+    messageText = messageContent;
+  }
+
+  if (!messageText.trim()) {
+    return;
+  }
+
+  const generatedTitle = generateTitleFromMessage(messageText);
+  if (!generatedTitle) {
+    return;
+  }
+
+  console.log('Auto-generating title for session', sessionId, ':', generatedTitle);
+  setIsAutoGenerating(true);
+
+  // Auto-update the session title
+  updateTitle(generatedTitle)
+    .then(() => {
+      // Only update state if this is still the current session
+      if (sessionId === currentSessionIdRef.current) {
+        setHasExistingTitle(true);
+        setIsStabilized(true);
+      }
+    })
+    .catch((err) => {
+      console.warn('Failed to auto-generate session title:', err);
+    })
+    .finally(() => {
+      if (sessionId === currentSessionIdRef.current) {
+        setIsAutoGenerating(false);
+      }
+    });
+}, [sessionId, hasExistingTitle, title, isStabilized, isManuallyEdited, isAutoGenerating, messages, updateTitle]);
+
+// Cleanup on unmount
+useEffect(() => {
+  return () => {
+    cleanup();
+  };
+}, [cleanup]);
+
+return {
+  title,
+  updateTitle,
+  isUpdating,
+  isAutoGenerating,
+  error,
+};
 };
