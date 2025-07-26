@@ -66,6 +66,8 @@ import { useRecipeManager } from '../hooks/useRecipeManager';
 import { useSessionContinuation } from '../hooks/useSessionContinuation';
 import { useFileDrop } from '../hooks/useFileDrop';
 import { useCostTracking } from '../hooks/useCostTracking';
+import { useSessionTitle } from '../hooks/useSessionTitle';
+import { EditableTitle } from './sessions/EditableTitle';
 import { Message } from '../types/message';
 import { ChatState } from '../types/chatState';
 
@@ -250,6 +252,12 @@ function BaseChatContent({
     sessionMetadata,
   });
 
+  // Use session title hook for editable title functionality
+  const { title: sessionTitle, updateTitle } = useSessionTitle({
+    sessionId: chat.id,
+    initialTitle: sessionMetadata?.description || '',
+  });
+
   useEffect(() => {
     window.electron.logInfo(
       'Initial messages when resuming session: ' + JSON.stringify(chat.messages, null, 2)
@@ -359,6 +367,19 @@ function BaseChatContent({
                     console.log('Change profile clicked');
                   }}
                   showBorder={true}
+                />
+              </div>
+            )}
+
+            {/* Session title header - show when there are messages and no recipe */}
+            {!recipeConfig?.title && filteredMessages.length > 0 && sessionTitle && (
+              <div className="sticky top-0 z-10 bg-background-default px-0 -mx-6 mb-6 pt-6">
+                <EditableTitle
+                  title={sessionTitle}
+                  onSave={updateTitle}
+                  placeholder="Session Title"
+                  maxLength={100}
+                  className="mb-4"
                 />
               </div>
             )}

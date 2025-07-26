@@ -11,6 +11,8 @@ import {
   LoaderCircle,
   AlertCircle,
 } from 'lucide-react';
+import { EditableTitle } from './EditableTitle';
+import { useSessionTitle } from '../../hooks/useSessionTitle';
 import { type SessionDetails } from '../../sessions';
 import { Button } from '../ui/button';
 import { toast } from 'react-toastify';
@@ -155,6 +157,12 @@ const SessionHistoryView: React.FC<SessionHistoryViewProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
 
+  // Use the session title hook for editable title functionality
+  const { title, updateTitle } = useSessionTitle({
+    sessionId: session.session_id,
+    initialTitle: session.metadata.description || 'Session Details',
+  });
+
   useEffect(() => {
     const savedSessionConfig = localStorage.getItem('session_sharing_config');
     if (savedSessionConfig) {
@@ -279,45 +287,58 @@ const SessionHistoryView: React.FC<SessionHistoryViewProps> = ({
     <>
       <MainPanelLayout>
         <div className="flex-1 flex flex-col min-h-0 px-8">
-          <SessionHeader
-            onBack={onBack}
-            title={session.metadata.description || 'Session Details'}
-            actionButtons={!isLoading ? actionButtons : null}
-          >
-            <div className="flex flex-col">
-              {!isLoading && session.messages.length > 0 ? (
-                <>
-                  <div className="flex items-center text-text-muted text-sm space-x-5 font-mono">
-                    <span className="flex items-center">
-                      <Calendar className="w-4 h-4 mr-1" />
-                      {formatMessageTimestamp(session.messages[0]?.created)}
-                    </span>
-                    <span className="flex items-center">
-                      <MessageSquareText className="w-4 h-4 mr-1" />
-                      {session.metadata.message_count}
-                    </span>
-                    {session.metadata.total_tokens !== null && (
-                      <span className="flex items-center">
-                        <Target className="w-4 h-4 mr-1" />
-                        {session.metadata.total_tokens.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center text-text-muted text-sm mt-1 font-mono">
-                    <span className="flex items-center">
-                      <Folder className="w-4 h-4 mr-1" />
-                      {session.metadata.working_dir}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center text-text-muted text-sm">
-                  <LoaderCircle className="w-4 h-4 mr-2 animate-spin" />
-                  <span>Loading session details...</span>
-                </div>
-              )}
+          <div className="flex flex-col pb-8 border-b">
+            <div className="flex items-center pt-0 mb-1">
+              <BackButton onClick={onBack} />
             </div>
-          </SessionHeader>
+            <div className="pt-6 mb-4">
+              <EditableTitle
+                title={title}
+                onSave={updateTitle}
+                placeholder="Session Details"
+                maxLength={100}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="flex items-center">
+              <div className="flex flex-col">
+                {!isLoading && session.messages.length > 0 ? (
+                  <>
+                    <div className="flex items-center text-text-muted text-sm space-x-5 font-mono">
+                      <span className="flex items-center">
+                        <Calendar className="w-4 h-4 mr-1" />
+                        {formatMessageTimestamp(session.messages[0]?.created)}
+                      </span>
+                      <span className="flex items-center">
+                        <MessageSquareText className="w-4 h-4 mr-1" />
+                        {session.metadata.message_count}
+                      </span>
+                      {session.metadata.total_tokens !== null && (
+                        <span className="flex items-center">
+                          <Target className="w-4 h-4 mr-1" />
+                          {session.metadata.total_tokens.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center text-text-muted text-sm mt-1 font-mono">
+                      <span className="flex items-center">
+                        <Folder className="w-4 h-4 mr-1" />
+                        {session.metadata.working_dir}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center text-text-muted text-sm">
+                    <LoaderCircle className="w-4 h-4 mr-2 animate-spin" />
+                    <span>Loading session details...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {!isLoading && actionButtons && (
+              <div className="flex items-center space-x-3 mt-4">{actionButtons}</div>
+            )}
+          </div>
 
           <SessionMessages
             messages={session.messages}
