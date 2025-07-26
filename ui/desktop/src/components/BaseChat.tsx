@@ -270,24 +270,7 @@ function BaseChatContent({
     messages: messages, // Pass messages to enable auto-generation
   });
 
-  // Debug logging to understand why session title isn't showing
-  useEffect(() => {
-    console.log('=== SESSION TITLE DEBUG ===');
-    console.log('Session title debug:', {
-      sessionId: chat.id,
-      sessionTitle,
-      sessionMetadata,
-      recipeTitle: recipeConfig?.title,
-      showCondition: !recipeConfig?.title,
-      initialTitlePassedToHook: sessionMetadata?.description || ''
-    });
-    console.log('=== END SESSION TITLE DEBUG ===');
-  }, [chat.id, sessionTitle, sessionMetadata, recipeConfig?.title]);
 
-  // Also log when component mounts
-  useEffect(() => {
-    console.log('BaseChat component mounted with chat:', chat);
-  }, []);
   useEffect(() => {
     window.electron.logInfo(
       'Initial messages when resuming session: ' + JSON.stringify(chat.messages, null, 2)
