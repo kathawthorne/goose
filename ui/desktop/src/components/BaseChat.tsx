@@ -269,6 +269,25 @@ function BaseChatContent({
     initialTitle: initialTitleForSession,
     messages: messages, // Pass messages to enable auto-generation
   });
+
+  // Debug logging to understand why session title isn't showing
+  useEffect(() => {
+    console.log('=== SESSION TITLE DEBUG ===');
+    console.log('Session title debug:', {
+      sessionId: chat.id,
+      sessionTitle,
+      sessionMetadata,
+      recipeTitle: recipeConfig?.title,
+      showCondition: !recipeConfig?.title,
+      initialTitlePassedToHook: sessionMetadata?.description || ''
+    });
+    console.log('=== END SESSION TITLE DEBUG ===');
+  }, [chat.id, sessionTitle, sessionMetadata, recipeConfig?.title]);
+
+  // Also log when component mounts
+  useEffect(() => {
+    console.log('BaseChat component mounted with chat:', chat);
+  }, []);
   useEffect(() => {
     window.electron.logInfo(
       'Initial messages when resuming session: ' + JSON.stringify(chat.messages, null, 2)
@@ -368,7 +387,6 @@ function BaseChatContent({
             />
           </div>
         )}
-
         {/* Chat container with sticky recipe header */}
         <div className="flex flex-col flex-1 mb-0.5 min-h-0 relative">
           <ScrollArea
@@ -395,19 +413,6 @@ function BaseChatContent({
                     console.log('Change profile clicked');
                   }}
                   showBorder={true}
-                />
-              </div>
-            )}
-
-            {/* Session title header - show when there are messages and no recipe */}
-            {!recipeConfig?.title && filteredMessages.length > 0 && sessionTitle && (
-              <div className="sticky top-0 z-10 bg-background-default px-0 -mx-6 mb-6 pt-6">
-                <EditableTitle
-                  title={sessionTitle}
-                  onSave={updateTitle}
-                  placeholder="Session Title"
-                  maxLength={100}
-                  className="mb-4"
                 />
               </div>
             )}
