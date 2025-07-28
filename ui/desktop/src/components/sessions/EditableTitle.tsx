@@ -9,6 +9,7 @@ interface EditableTitleProps {
   placeholder?: string;
   maxLength?: number;
   disabled?: boolean;
+  isAutoGenerating?: boolean; // Add prop for auto-generation state
 }
 
 export const EditableTitle: React.FC<EditableTitleProps> = ({
@@ -18,6 +19,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
   placeholder = 'Enter title...',
   maxLength = 100,
   disabled = false,
+  isAutoGenerating = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
@@ -157,10 +159,18 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
 
   return (
     <div className={`group flex items-center gap-2 ${className}`}>
-      <h1 className="text-4xl font-light flex-1">
-        {title || placeholder}
-      </h1>
-      {!disabled && (
+      <div className="flex items-center gap-2 flex-1">
+        <h1 className={`text-4xl font-light ${!title ? 'text-textSubtle' : ''}`}>
+          {title || placeholder}
+        </h1>
+        {isAutoGenerating && (
+          <div className="flex items-center gap-2">
+            <LoaderCircle className="h-4 w-4 animate-spin text-textSubtle" />
+            <span className="text-sm text-textSubtle">Generating title...</span>
+          </div>
+        )}
+      </div>
+      {!disabled && !isAutoGenerating && (
         <Button
           size="sm"
           variant="ghost"

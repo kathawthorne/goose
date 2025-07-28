@@ -253,9 +253,10 @@ function BaseChatContent({
   });
 
   // Use session title hook for editable title functionality
-  const { title: sessionTitle, updateTitle } = useSessionTitle({
+  const { title: sessionTitle, updateTitle, isAutoGenerating } = useSessionTitle({
     sessionId: chat.id,
     initialTitle: sessionMetadata?.description || '',
+    messages: messages, // Pass messages to enable auto-generation
   });
 
   useEffect(() => {
@@ -347,8 +348,9 @@ function BaseChatContent({
             <EditableTitle
               title={sessionTitle || ''}
               onSave={updateTitle}
-              placeholder="Untitled Session"
+              placeholder="New Chat"
               maxLength={100}
+              isAutoGenerating={isAutoGenerating}
             />
           </div>
         )}
