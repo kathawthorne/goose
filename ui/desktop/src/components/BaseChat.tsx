@@ -253,9 +253,16 @@ function BaseChatContent({
   });
 
   // Use session title hook for editable title functionality
-  const { title: sessionTitle, updateTitle, isAutoGenerating } = useSessionTitle({
+  // For resumed sessions, prioritize chat.title (set immediately) over sessionMetadata.description (loads later)
+  const initialTitleForSession = chat.title || sessionMetadata?.description || '';
+
+  const {
+    title: sessionTitle,
+    updateTitle,
+    isAutoGenerating,
+  } = useSessionTitle({
     sessionId: chat.id,
-    initialTitle: sessionMetadata?.description || '',
+    initialTitle: initialTitleForSession,
     messages: messages, // Pass messages to enable auto-generation
   });
 
