@@ -53,7 +53,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     const newSessionId = generateSessionId();
     setChat({
       id: newSessionId,
-      title: 'New Chat',
+      title: '', // Empty title so it can be auto-generated
       messages: [],
       messageHistoryIndex: 0,
       recipeConfig: null, // Clear recipe when resetting chat

@@ -57,7 +57,7 @@ export default function Hub({
       const newChatId = generateSessionId();
       const newPairChat = {
         id: newChatId, // This generates a unique ID each time
-        title: 'New Chat',
+        title: '', // Empty title so it can be auto-generated
         messages: [], // Always start with empty messages
         messageHistoryIndex: 0,
         recipeConfig: null, // Clear recipe for new chats from Hub

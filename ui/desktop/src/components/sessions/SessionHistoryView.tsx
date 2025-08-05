@@ -59,23 +59,23 @@ interface SessionHistoryViewProps {
 }
 
 // Custom SessionHeader component similar to SessionListView style
-const SessionHeader: React.FC<{
-  onBack: () => void;
-  children: React.ReactNode;
-  title: string;
-  actionButtons?: React.ReactNode;
-}> = ({ onBack, children, title, actionButtons }) => {
-  return (
-    <div className="flex flex-col pb-8 border-b">
-      <div className="flex items-center pt-0 mb-1">
-        <BackButton onClick={onBack} />
-      </div>
-      <h1 className="text-4xl font-light mb-4 pt-6">{title}</h1>
-      <div className="flex items-center">{children}</div>
-      {actionButtons && <div className="flex items-center space-x-3 mt-4">{actionButtons}</div>}
-    </div>
-  );
-};
+// const SessionHeader: React.FC<{
+//   onBack: () => void;
+//   children: React.ReactNode;
+//   title: string;
+//   actionButtons?: React.ReactNode;
+// }> = ({ onBack, children, title, actionButtons }) => {
+//   return (
+//     <div className="flex flex-col pb-8 border-b">
+//       <div className="flex items-center pt-0 mb-1">
+//         <BackButton onClick={onBack} />
+//       </div>
+//       <h1 className="text-4xl font-light mb-4 pt-6">{title}</h1>
+//       <div className="flex items-center">{children}</div>
+//       {actionButtons && <div className="flex items-center space-x-3 mt-4">{actionButtons}</div>}
+//     </div>
+//   );
+// };
 
 // Session messages component that uses the same rendering as BaseChat
 const SessionMessages: React.FC<{

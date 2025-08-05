@@ -198,13 +198,18 @@ export const useChatEngine = ({
 
   // Update token counts when sessionMetadata changes from the message stream
   useEffect(() => {
-    console.log('Session metadata received:', sessionMetadata);
+    console.log('Session metadata received for session', chat.id, ':', sessionMetadata);
     if (sessionMetadata) {
       setSessionTokenCount(sessionMetadata.totalTokens || 0);
       setSessionInputTokens(sessionMetadata.accumulatedInputTokens || 0);
       setSessionOutputTokens(sessionMetadata.accumulatedOutputTokens || 0);
+
+      // Log the session description for debugging title updates
+      if (sessionMetadata.description) {
+        console.log('Session description from metadata:', sessionMetadata.description);
+      }
     }
-  }, [sessionMetadata]);
+  }, [sessionMetadata, chat.id]);
 
   // Handle submit
   const handleSubmit = useCallback(

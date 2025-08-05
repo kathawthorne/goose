@@ -11,7 +11,7 @@ type UseChatArgs = {
 export const useChat = ({ setIsLoadingSession, setView, setPairChat }: UseChatArgs) => {
   const [chat, setChat] = useState<ChatType>({
     id: generateSessionId(),
-    title: 'New Chat',
+    title: '', // Empty title so it can be auto-generated
     messages: [],
     messageHistoryIndex: 0,
     recipeConfig: null, // Initialize with no recipe

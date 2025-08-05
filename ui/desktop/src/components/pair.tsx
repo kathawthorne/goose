@@ -71,7 +71,7 @@ export default function Pair({
       // Reset the chat to start fresh with the recipe
       const newChat = {
         id: chat.id, // Keep the same ID to maintain the session
-        title: location.state.recipeConfig.title || 'Recipe Chat',
+        title: '', // Empty title so it can be auto-generated
         messages: [], // Clear messages to start fresh
         messageHistoryIndex: 0,
         recipeConfig: location.state.recipeConfig, // Set the recipe config in chat state

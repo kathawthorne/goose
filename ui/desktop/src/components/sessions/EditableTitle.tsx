@@ -56,7 +56,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
 
   const handleSave = async () => {
     const trimmedValue = editValue.trim();
-    
+
     // Don't save if value hasn't changed
     if (trimmedValue === title) {
       setIsEditing(false);
@@ -145,11 +145,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
             </Button>
           </div>
         </div>
-        {error && (
-          <div className="text-red-500 text-sm mt-1 px-0">
-            {error}
-          </div>
-        )}
+        {error && <div className="text-red-500 text-sm mt-1 px-0">{error}</div>}
         <div className="text-xs text-textSubtle mt-1 px-0">
           Press Enter to save, Escape to cancel
         </div>
@@ -159,14 +155,14 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
 
   return (
     <div className={`group flex items-center gap-2 ${className}`}>
-      <div className="flex items-center gap-2 flex-1">
-        <h1 className={`text-4xl font-light ${!title ? 'text-textSubtle' : ''}`}>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <h1 className={`text-4xl font-light truncate ${!title ? 'text-textSubtle' : ''}`}>
           {title || placeholder}
         </h1>
         {isAutoGenerating && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <LoaderCircle className="h-4 w-4 animate-spin text-textSubtle" />
-            <span className="text-sm text-textSubtle">Generating title...</span>
+            <span className="text-sm text-textSubtle whitespace-nowrap">Generating title...</span>
           </div>
         )}
       </div>
@@ -175,7 +171,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
           size="sm"
           variant="ghost"
           onClick={handleStartEdit}
-          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
         >
           <Edit className="h-4 w-4" />
         </Button>

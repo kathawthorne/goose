@@ -64,7 +64,7 @@ export const useSessionContinuation = ({
       setChat({
         ...chat,
         id: newSessionId!,
-        title: `Continued from ${chat.id}`,
+        title: '', // Clear title so it can be auto-generated from new messages
         messageHistoryIndex: 0, // Reset since messages were already reset
         // Explicitly preserve the recipe config
         recipeConfig: chat.recipeConfig,

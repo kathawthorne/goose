@@ -217,7 +217,7 @@ const PairRouteWrapper = ({
 
       const updatedChat: ChatType = {
         id: chatRef.current.id, // Keep the same ID
-        title: recipeConfig.title || 'Recipe Chat',
+        title: '', // Empty title so it can be auto-generated
         messages: [], // Clear messages to start fresh
         messageHistoryIndex: 0,
         recipeConfig: recipeConfig,
@@ -236,7 +236,7 @@ const PairRouteWrapper = ({
       const updatedChat: ChatType = {
         ...chatRef.current,
         recipeConfig: recipeConfig,
-        title: recipeConfig.title || chatRef.current.title,
+        title: '', // Empty title so it can be auto-generated
       };
 
       // Update both the local chat state and the app-level pairChat state
@@ -702,7 +702,7 @@ export default function App() {
   // Add separate state for pair chat to maintain its own conversation
   const [pairChat, setPairChat] = useState<ChatType>({
     id: generateSessionId(),
-    title: 'Pair Chat',
+    title: '', // Empty title so it can be auto-generated
     messages: [],
     messageHistoryIndex: 0,
     recipeConfig: null, // Initialize with no recipe
@@ -932,7 +932,7 @@ export default function App() {
               setPairChat((prevChat) => ({
                 ...prevChat,
                 recipeConfig: recipeConfig as Recipe,
-                title: (recipeConfig as Recipe).title || 'Recipe Chat',
+                title: '', // Empty title so it can be auto-generated
                 messages: [], // Start fresh for recipe
                 messageHistoryIndex: 0,
               }));
