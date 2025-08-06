@@ -46,6 +46,9 @@ pub struct SessionMetadata {
     pub working_dir: PathBuf,
     /// A short description of the session, typically 3 words or less
     pub description: String,
+    /// Whether the title was customized by user (prevents AI override)
+    #[serde(default)]
+    pub is_title_customized: bool,
     /// ID of the schedule that triggered this session, if any
     pub schedule_id: Option<String>,
     /// ID of the project this session belongs to, if any
@@ -97,6 +100,7 @@ impl<'de> Deserialize<'de> for SessionMetadata {
 
         Ok(SessionMetadata {
             description: helper.description,
+            is_title_customized: false, // Default to false for deserialized sessions
             message_count: helper.message_count,
             schedule_id: helper.schedule_id,
             project_id: helper.project_id,
@@ -123,6 +127,7 @@ impl SessionMetadata {
         Self {
             working_dir,
             description: String::new(),
+            is_title_customized: false,
             schedule_id: None,
             project_id: None,
             message_count: 0,

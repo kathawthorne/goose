@@ -1274,6 +1274,7 @@ async fn run_scheduled_job_internal(
                         let fallback_metadata = crate::session::storage::SessionMetadata {
                             working_dir: current_dir.clone(),
                             description: String::new(),
+                            is_title_customized: false,
                             schedule_id: Some(job.id.clone()),
                             project_id: None,
                             message_count: all_session_messages.len(),
