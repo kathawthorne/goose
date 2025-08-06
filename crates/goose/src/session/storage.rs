@@ -1094,9 +1094,21 @@ pub async fn persist_messages_with_schedule_id(
         .filter(|m| m.role == rmcp::model::Role::User && !m.as_concat_text().trim().is_empty())
         .count();
 
-    // Check if we need to update the description (after 1st or 3rd user message)
+    // Read existing metadata to check if title was customized
+    let existing_metadata = if secure_path.exists() {
+        Some(read_metadata(&secure_path)?)
+    } else {
+        None
+    };
+
+    // Check if we should generate AI description
+    let should_generate_title = user_message_count < 4 
+        && !existing_metadata.as_ref().map_or(false, |m| m.is_title_customized)
+        && existing_metadata.as_ref().map_or(true, |m| m.description == "New Chat" || m.description.is_empty());
+
+    // Generate AI description only if conditions are met
     match provider {
-        Some(provider) if user_message_count < 4 => {
+        Some(provider) if should_generate_title => {
             //generate_description is responsible for writing the messages
             generate_description_with_schedule_id(
                 &secure_path,
