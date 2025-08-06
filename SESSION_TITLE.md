@@ -404,6 +404,113 @@ if (sessionResponse.data?.metadata) {
 2. 🔄 Documentation updates
 3. 🔄 Deployment preparation
 
+## Detailed Commit Breakdown
+
+### **Phase 1: Backend Foundation (4-5 commits)**
+
+#### Commit 1: `feat(session): add is_title_customized field to SessionMetadata`
+**Files**: `crates/goose/src/session/storage.rs`
+- Add `#[serde(default)] pub is_title_customized: bool` to SessionMetadata struct
+- Update any metadata initialization to set default value
+- **Why separate**: Pure data model change, easy to review, no breaking changes
+
+#### Commit 2: `feat(session): prevent AI title generation for customized sessions`
+**Files**: `crates/goose/src/session/storage.rs`
+- Modify `save_messages` function to check `is_title_customized` flag
+- Add logic: only generate if `user_message_count < 4 && !metadata.is_title_customized && metadata.description == "New Chat"`
+- **Why separate**: Core business logic change, needs careful review
+
+#### Commit 3: `feat(api): add session title update endpoint`
+**Files**: 
+- `crates/goose-server/src/routes/session.rs`
+- Update OpenAPI schema files
+- Add `UpdateSessionTitleRequest` struct
+- Add `update_session_title` function
+- **Why separate**: New API surface, needs API review and testing
+
+#### Commit 4: `feat(api): register session title route`
+**Files**: `crates/goose-server/src/routes/session.rs` (route registration)
+- Add route to router configuration
+- Update any route documentation
+- **Why separate**: Infrastructure change, easy to verify routing works
+
+#### Commit 5: `test(session): add backend tests for title functionality`
+**Files**: Test files for session metadata and API endpoints
+- Unit tests for AI generation prevention logic
+- API endpoint tests for title updates
+- **Why separate**: Can be done in parallel with frontend work
+
+### **Phase 2: Frontend Component (2-3 commits)**
+
+#### Commit 6: `feat(ui): add SessionTitle component`
+**Files**: `ui/desktop/src/components/SessionTitle.tsx`
+- Complete SessionTitle component with display/edit modes
+- Include all state management, validation, API calls
+- **Why separate**: Self-contained component, easy to review and test in isolation
+
+#### Commit 7: `feat(ui): integrate SessionTitle with BaseChat`
+**Files**: `ui/desktop/src/components/BaseChat.tsx`
+- Add session header when no recipe active
+- Implement mutual exclusion with recipe headers
+- Update chat state on title changes
+- **Why separate**: UI integration change, needs visual verification
+
+#### Commit 8: `test(ui): add SessionTitle component tests`
+**Files**: Component test files
+- Unit tests for component rendering and interactions
+- **Why separate**: Can be done in parallel, keeps main component commit focused
+
+### **Phase 3: Integration (2 commits)**
+
+#### Commit 9: `feat(session): preserve custom titles on resumption`
+**Files**: 
+- `ui/desktop/src/hooks/useChat.ts`
+- `ui/desktop/src/App.tsx` (PairRouteWrapper)
+- Update session resumption to handle custom titles properly
+- **Why separate**: Critical integration point, needs careful testing
+
+#### Commit 10: `feat(session): sync metadata updates with title display`
+**Files**: `ui/desktop/src/hooks/useMessageStream.ts`
+- Add basic protection against overwriting user edits
+- Update chat title from metadata when appropriate
+- **Why separate**: Complex interaction between metadata sync and UI state
+
+### **Phase 4: Polish (1-2 commits)**
+
+#### Commit 11: `fix: address session title edge cases and improvements`
+**Files**: Various files based on testing
+- Bug fixes discovered during testing
+- Minor UX improvements
+- **Why separate**: Cleanup commit after integration testing
+
+#### Optional Commit 12: `docs: update session title functionality documentation`
+**Files**: Documentation files
+- Update any relevant docs about session functionality
+- **Why separate**: Non-functional change, can be done last
+
+## **Commit Strategy Benefits**
+
+### 🟢 **Incremental Safety**
+- Each commit is independently reviewable
+- Backend changes land first (safer)
+- UI changes build on stable backend
+- Easy to revert specific changes if needed
+
+### 🟢 **Parallel Development** 
+- Tests can be written in parallel with main features
+- Multiple developers can work on different commits
+- Frontend can start once backend API is merged
+
+### 🟢 **Review Efficiency**
+- Small, focused commits are easier to review thoroughly
+- Clear separation of concerns
+- Business logic separated from UI changes
+
+### 🟢 **Risk Management**
+- Data model changes land first and can be tested
+- API endpoints can be tested independently
+- UI integration is last major risk point
+
 ## Success Criteria
 
 ### Functional Requirements
