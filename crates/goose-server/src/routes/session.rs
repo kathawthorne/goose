@@ -7,14 +7,14 @@ use crate::state::AppState;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, put},
     Json, Router,
 };
 use goose::message::Message;
 use goose::session;
 use goose::session::info::{get_valid_sorted_sessions, SessionInfo, SortOrder};
 use goose::session::SessionMetadata;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use utoipa::ToSchema;
 
@@ -298,6 +298,55 @@ async fn get_activity_heatmap(
     }
 
     Ok(Json(result))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateSessionTitleRequest {
+    pub title: String,
+}
+
+#[utoipa::path(
+    put,
+    path = "/sessions/{session_id}/title",
+    request_body = UpdateSessionTitleRequest,
+    responses(
+        (status = 200, description = "Session title updated successfully"),
+        (status = 404, description = "Session not found"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    ),
+    tag = "Session Management"
+)]
+async fn update_session_title(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(payload): Json<UpdateSessionTitleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    verify_secret_key(&headers, &state)?;
+
+    let session_path = session::get_path(session::Identifier::Name(session_id))
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let mut metadata = session::read_metadata(&session_path)
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Update title and mark as customized
+    metadata.description = payload.title;
+    metadata.is_title_customized = true;
+
+    // Async update to avoid blocking
+    let session_path_clone = session_path.clone();
+    let metadata_clone = metadata.clone();
+    tokio::task::spawn(async move {
+        if let Err(e) = session::update_metadata(&session_path_clone, &metadata_clone).await {
+            tracing::error!("Failed to update session metadata: {}", e);
+        }
+    });
+
+    Ok(StatusCode::OK)
 }
 
 // Configure routes for this module
