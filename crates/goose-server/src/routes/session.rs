@@ -354,6 +354,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/sessions", get(list_sessions))
         .route("/sessions/{session_id}", get(get_session_history))
+        .route("/sessions/{session_id}/title", put(update_session_title))
         .route("/sessions/insights", get(get_session_insights))
         .route("/sessions/activity-heatmap", get(get_activity_heatmap))
         .with_state(state)
