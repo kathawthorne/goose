@@ -78,6 +78,8 @@ impl<'de> Deserialize<'de> for SessionMetadata {
         #[derive(Deserialize)]
         struct Helper {
             description: String,
+            #[serde(default)]
+            is_title_customized: bool,
             message_count: usize,
             schedule_id: Option<String>, // For backward compatibility
             project_id: Option<String>,  // For backward compatibility
@@ -100,7 +102,7 @@ impl<'de> Deserialize<'de> for SessionMetadata {
 
         Ok(SessionMetadata {
             description: helper.description,
-            is_title_customized: false, // Default to false for deserialized sessions
+            is_title_customized: helper.is_title_customized,
             message_count: helper.message_count,
             schedule_id: helper.schedule_id,
             project_id: helper.project_id,
@@ -1977,6 +1979,139 @@ mod tests {
         // Verify the schedule_id was set correctly
         let metadata = read_metadata(&file_path)?;
         assert_eq!(metadata.schedule_id, Some("test_schedule".to_string()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_is_title_customized_field_default() -> Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_customized.jsonl");
+
+        let messages = vec![Message::user().with_text("Hello world")];
+
+        // Create a new session - should have is_title_customized = false by default
+        persist_messages(&file_path, &messages, None, None).await?;
+        let metadata = read_metadata(&file_path)?;
+        
+        assert_eq!(metadata.is_title_customized, false, "New sessions should have is_title_customized = false");
+        assert_eq!(metadata.description, "", "New sessions should have empty description");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_respects_customized_flag() -> Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_ai_generation.jsonl");
+
+        let messages = vec![
+            Message::user().with_text("First message"),
+            Message::assistant().with_text("First response"),
+            Message::user().with_text("Second message"),
+        ];
+
+        // Test 1: Normal AI generation should work when is_title_customized = false
+        persist_messages_with_schedule_id(&file_path, &messages[..1], None, None, None).await?;
+        let metadata_initial = read_metadata(&file_path)?;
+        assert_eq!(metadata_initial.is_title_customized, false);
+
+        // Test 2: Simulate AI generation setting a description
+        let mut metadata_with_ai = metadata_initial.clone();
+        metadata_with_ai.description = "AI Generated Title".to_string();
+        update_metadata(&file_path, &metadata_with_ai).await?;
+
+        // Test 3: Mark as customized by user
+        let mut metadata_customized = metadata_with_ai.clone();
+        metadata_customized.description = "User Custom Title".to_string();
+        metadata_customized.is_title_customized = true;
+        update_metadata(&file_path, &metadata_customized).await?;
+
+        // Verify the customized state was saved
+        let metadata_after_custom = read_metadata(&file_path)?;
+        assert_eq!(metadata_after_custom.is_title_customized, true);
+        assert_eq!(metadata_after_custom.description, "User Custom Title");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_metadata_preserves_customized_flag() -> Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_update_preserves.jsonl");
+
+        let messages = vec![Message::user().with_text("Test message")];
+
+        // Create initial session
+        persist_messages(&file_path, &messages, None, None).await?;
+        
+        // Update metadata to mark as customized
+        let mut metadata = read_metadata(&file_path)?;
+        metadata.description = "Custom Title".to_string();
+        metadata.is_title_customized = true;
+        metadata.message_count = 5; // Update other field too
+        
+        update_metadata(&file_path, &metadata).await?;
+
+        // Verify both the customized flag and other fields were preserved
+        let updated_metadata = read_metadata(&file_path)?;
+        assert_eq!(updated_metadata.is_title_customized, true);
+        assert_eq!(updated_metadata.description, "Custom Title");
+        assert_eq!(updated_metadata.message_count, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_session_metadata_serialization_with_customized_field() -> Result<()> {
+        // Test serialization includes the new field
+        let metadata = SessionMetadata {
+            working_dir: PathBuf::from("/test/path"),
+            description: "Test Title".to_string(),
+            is_title_customized: true,
+            schedule_id: None,
+            project_id: None,
+            message_count: 3,
+            total_tokens: Some(100),
+            input_tokens: Some(50),
+            output_tokens: Some(50),
+            accumulated_total_tokens: Some(300),
+            accumulated_input_tokens: Some(150),
+            accumulated_output_tokens: Some(150),
+        };
+
+        let serialized = serde_json::to_string(&metadata)?;
+        assert!(serialized.contains("is_title_customized"));
+        assert!(serialized.contains("true"));
+
+        // Test deserialization with the field
+        let deserialized: SessionMetadata = serde_json::from_str(&serialized)?;
+        assert_eq!(deserialized.is_title_customized, true);
+        assert_eq!(deserialized.description, "Test Title");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_session_metadata_deserialization_without_customized_field() -> Result<()> {
+        // Test backward compatibility - old sessions without the field should default to false
+        let old_metadata_json = r#"{
+            "working_dir": "/test/path",
+            "description": "Old Session",
+            "schedule_id": null,
+            "project_id": null,
+            "message_count": 2,
+            "total_tokens": 80,
+            "input_tokens": 40,
+            "output_tokens": 40,
+            "accumulated_total_tokens": 160,
+            "accumulated_input_tokens": 80,
+            "accumulated_output_tokens": 80
+        }"#;
+
+        let deserialized: SessionMetadata = serde_json::from_str(old_metadata_json)?;
+        assert_eq!(deserialized.is_title_customized, false, "Old sessions should default is_title_customized to false");
+        assert_eq!(deserialized.description, "Old Session");
 
         Ok(())
     }

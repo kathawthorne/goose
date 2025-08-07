@@ -404,6 +404,7 @@ pub fn create_test_session_metadata(message_count: usize, working_dir: &str) -> 
         message_count,
         working_dir: PathBuf::from(working_dir),
         description: "Test session".to_string(),
+        is_title_customized: false,
         schedule_id: Some("test_job".to_string()),
         project_id: None,
         total_tokens: Some(100),
