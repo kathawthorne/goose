@@ -46,6 +46,7 @@ import React, { useEffect, useContext, createContext, useRef, useCallback } from
 import { useLocation } from 'react-router-dom';
 import { SearchView } from './conversation/SearchView';
 import { AgentHeader } from './AgentHeader';
+import { SessionTitle } from './SessionTitle';
 import LayingEggLoader from './LayingEggLoader';
 import LoadingGoose from './LoadingGoose';
 import RecipeActivities from './RecipeActivities';
@@ -353,8 +354,9 @@ function BaseChatContent({
             paddingX={6}
             paddingY={0}
           >
-            {/* Recipe agent header - sticky at top of chat container */}
-            {recipeConfig?.title && (
+            {/* Session or Recipe Header - mutually exclusive */}
+            {recipeConfig?.title ? (
+              // Recipe header takes precedence
               <div className="sticky top-0 z-10 bg-background-default px-0 -mx-6 mb-6 pt-6">
                 <AgentHeader
                   title={recipeConfig.title}
@@ -368,6 +370,24 @@ function BaseChatContent({
                   }}
                   showBorder={true}
                 />
+              </div>
+            ) : (
+              // Session header when no recipe active
+              <div className="sticky top-0 z-10 bg-background-default px-0 -mx-6 mb-6 pt-6">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-borderSubtle">
+                  <SessionTitle
+                    sessionId={chat.id}
+                    initialTitle={chat.title}
+                    onTitleChange={(newTitle: string) => {
+                      setChat({ ...chat, title: newTitle });
+                    }}
+                    className="flex-1"
+                  />
+                  <div className="flex items-center gap-2 text-sm text-textSubtle">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span>Active Session</span>
+                  </div>
+                </div>
               </div>
             )}
 
