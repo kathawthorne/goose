@@ -327,6 +327,12 @@ async fn update_session_title(
 ) -> Result<StatusCode, StatusCode> {
     verify_secret_key(&headers, &state)?;
 
+    // Validate title input to match frontend validation
+    let trimmed_title = payload.title.trim();
+    if trimmed_title.is_empty() || trimmed_title.len() > 100 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let session_path = session::get_path(session::Identifier::Name(session_id))
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -338,9 +344,8 @@ async fn update_session_title(
     let mut metadata = session::read_metadata(&session_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Update title and mark as customized
-    metadata.description = payload.title;
-    metadata.is_title_customized = true;
+    // Update title and mark as customized using helper method
+    metadata.set_title(trimmed_title.to_string());
 
     // Update metadata synchronously for reliable operation
     session::update_metadata(&session_path, &metadata)
@@ -540,5 +545,81 @@ mod tests {
         assert_eq!(updated_metadata.is_title_customized, true);
         assert_eq!(updated_metadata.message_count, 5);
         assert_eq!(updated_metadata.total_tokens, Some(100));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_title_validation_empty() {
+        let app = create_test_app().await;
+        let session_id = "test-session-validation-empty";
+        let _session_path = create_test_session(session_id).await;
+
+        let request = Request::builder()
+            .uri(&format!("/sessions/{}/title", session_id))
+            .method("PUT")
+            .header("content-type", "application/json")
+            .header("x-secret-key", "test-secret")
+            .body(Body::from(
+                json!({
+                    "title": "   "  // Only whitespace
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_update_session_title_validation_too_long() {
+        let app = create_test_app().await;
+        let session_id = "test-session-validation-long";
+        let _session_path = create_test_session(session_id).await;
+
+        let long_title = "a".repeat(101); // 101 characters, exceeds limit
+
+        let request = Request::builder()
+            .uri(&format!("/sessions/{}/title", session_id))
+            .method("PUT")
+            .header("content-type", "application/json")
+            .header("x-secret-key", "test-secret")
+            .body(Body::from(
+                json!({
+                    "title": long_title
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_update_session_title_trims_whitespace() {
+        let app = create_test_app().await;
+        let session_id = "test-session-trim";
+        let session_path = create_test_session(session_id).await;
+
+        let request = Request::builder()
+            .uri(&format!("/sessions/{}/title", session_id))
+            .method("PUT")
+            .header("content-type", "application/json")
+            .header("x-secret-key", "test-secret")
+            .body(Body::from(
+                json!({
+                    "title": "  Trimmed Title  "
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify the title was trimmed
+        let updated_metadata = session::read_metadata(&session_path).unwrap();
+        assert_eq!(updated_metadata.description, "Trimmed Title");
+        assert_eq!(updated_metadata.is_title_customized, true);
     }
 }

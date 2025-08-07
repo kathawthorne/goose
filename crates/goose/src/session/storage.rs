@@ -44,7 +44,9 @@ pub struct SessionMetadata {
     /// Working directory for the session
     #[schema(value_type = String, example = "/home/user/sessions/session1")]
     pub working_dir: PathBuf,
-    /// A short description of the session, typically 3 words or less
+    /// Session title/description - displayed as the session title in UI
+    /// Despite the field name "description", this serves as the session title
+    /// and is editable by users. Typically 3-4 words or less.
     pub description: String,
     /// Whether the title was customized by user (prevents AI override)
     #[serde(default)]
@@ -140,6 +142,23 @@ impl SessionMetadata {
             accumulated_input_tokens: None,
             accumulated_output_tokens: None,
         }
+    }
+
+    /// Get the session title (stored in the description field for historical reasons)
+    pub fn title(&self) -> &str {
+        &self.description
+    }
+
+    /// Set the session title and mark it as customized by the user
+    pub fn set_title(&mut self, title: String) {
+        self.description = title;
+        self.is_title_customized = true;
+    }
+
+    /// Set the session title from AI generation (doesn't mark as customized)
+    pub fn set_ai_generated_title(&mut self, title: String) {
+        self.description = title;
+        // Don't set is_title_customized = true for AI-generated titles
     }
 }
 
@@ -1103,10 +1122,8 @@ pub async fn persist_messages_with_schedule_id(
         None
     };
 
-    // Check if we should generate AI description
-    let should_generate_title = user_message_count < 4 
-        && !existing_metadata.as_ref().map_or(false, |m| m.is_title_customized)
-        && existing_metadata.as_ref().map_or(true, |m| m.description == "New Chat" || m.description.is_empty());
+    // Check if we should generate AI description using helper function
+    let should_generate_title = should_generate_ai_title(user_message_count, existing_metadata.as_ref());
 
     // Generate AI description only if conditions are met
     match provider {
@@ -1268,6 +1285,15 @@ pub fn save_messages_with_metadata(
 
     tracing::debug!("Successfully saved session file: {:?}", secure_path);
     Ok(())
+}
+
+/// Determines if an AI-generated title should be created for the session
+/// 
+/// Returns true if:
+/// 1. User message count is less than 4 (early in the conversation)
+/// 2. The session title has not been customized by the user
+fn should_generate_ai_title(user_message_count: usize, metadata: Option<&SessionMetadata>) -> bool {
+    user_message_count < 4 && !metadata.map_or(false, |m| m.is_title_customized)
 }
 
 /// Generate a description for the session using the provider
@@ -2114,5 +2140,42 @@ mod tests {
         assert_eq!(deserialized.description, "Old Session");
 
         Ok(())
+    }
+
+    #[test]
+    fn test_should_generate_ai_title_logic() {
+        // Test with no existing metadata (new session)
+        assert!(should_generate_ai_title(1, None), "Should generate for new session with few messages");
+        assert!(should_generate_ai_title(3, None), "Should generate for new session with 3 messages");
+        assert!(!should_generate_ai_title(4, None), "Should not generate for new session with 4+ messages");
+
+        // Test with non-customized metadata
+        let metadata = SessionMetadata {
+            working_dir: PathBuf::from("/test"),
+            description: "AI Generated".to_string(),
+            is_title_customized: false,
+            schedule_id: None,
+            project_id: None,
+            message_count: 2,
+            total_tokens: None,
+            input_tokens: None,
+            output_tokens: None,
+            accumulated_total_tokens: None,
+            accumulated_input_tokens: None,
+            accumulated_output_tokens: None,
+        };
+
+        assert!(should_generate_ai_title(1, Some(&metadata)), "Should generate for non-customized session");
+        assert!(should_generate_ai_title(3, Some(&metadata)), "Should generate for non-customized session with 3 messages");
+        assert!(!should_generate_ai_title(4, Some(&metadata)), "Should not generate for session with 4+ messages");
+
+        // Test with customized metadata
+        let customized_metadata = SessionMetadata {
+            is_title_customized: true,
+            ..metadata
+        };
+
+        assert!(!should_generate_ai_title(1, Some(&customized_metadata)), "Should not generate for customized session");
+        assert!(!should_generate_ai_title(3, Some(&customized_metadata)), "Should not generate for customized session even with few messages");
     }
 }
