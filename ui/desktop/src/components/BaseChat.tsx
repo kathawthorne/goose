@@ -48,7 +48,7 @@ import { SearchView } from './conversation/SearchView';
 import { AgentHeader } from './AgentHeader';
 import LayingEggLoader from './LayingEggLoader';
 import LoadingGoose from './LoadingGoose';
-import Splash from './Splash';
+import SplashPills from './SplashPills';
 import PopularChatTopics from './PopularChatTopics';
 import ProgressiveMessageList from './ProgressiveMessageList';
 import { SessionSummaryModal } from './context_management/SessionSummaryModal';
@@ -128,7 +128,7 @@ function BaseChatContent({
     summaryContent,
     summarizedThread,
     isSummaryModalOpen,
-    isLoadingSummary,
+    preparingManualSummary,
     resetMessagesWithSummary,
     closeSummaryModal,
     updateSummary,
@@ -408,7 +408,7 @@ function BaseChatContent({
                 <>
                   {/* Show Splash when we have a recipe config and user hasn't started using it */}
                   {recipeConfig ? (
-                    <Splash
+                    <SplashPills
                       append={(text: string) => appendWithTracking(text)}
                       activities={
                         Array.isArray(recipeConfig.activities) ? recipeConfig.activities : null
@@ -534,7 +534,7 @@ function BaseChatContent({
           {chatState !== ChatState.Idle && (
             <div className="absolute bottom-1 left-4 z-20 pointer-events-none">
               <LoadingGoose
-                message={isLoadingSummary ? 'summarizing conversation…' : undefined}
+                message={preparingManualSummary ? 'summarizing conversation…' : undefined}
                 chatState={chatState}
               />
             </div>

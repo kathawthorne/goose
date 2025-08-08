@@ -46,9 +46,10 @@ function ContextBlock({ content }: ContextBlockProps) {
 interface SplashPillsProps {
   append: (text: string) => void;
   activities: string[] | null;
+  title?: string;
 }
 
-export default function SplashPills({ append, activities = null }: SplashPillsProps) {
+export default function SplashPills({ append, activities = null, title }: SplashPillsProps) {
   // If custom activities are provided, use those instead of the default ones
   const defaultPills = [
     'What can you do?',
@@ -72,6 +73,8 @@ export default function SplashPills({ append, activities = null }: SplashPillsPr
 
   return (
     <div className="flex flex-col">
+      {title && <div className="mb-4 text-lg font-semibold text-textStandard">{title}</div>}
+
       {messagePill && <ContextBlock content={messagePill} />}
 
       <div className="flex flex-wrap gap-2 animate-[fadein_500ms_ease-in_forwards]">
